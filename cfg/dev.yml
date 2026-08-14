@@ -1,0 +1,22 @@
+
+# Configuración de estados del proveedor
+statuses:
+  - application_status: SUBMITD
+    platform_status: DELIVRD
+    estado_proveedor: "Entregado"
+    estado_operadora: "Entregado"
+
+  - application_status: SUBMITD
+    platform_status: UNDELIV
+    estado_proveedor: "Entregado"
+    estado_operadora: "No Entregado"
+
+  - application_status: UNDELIV
+    platform_status: UNDELIV
+    estado_proveedor: "No Entregado"
+    estado_operadora: "No Entregado"
+
+  - application_status: "*"
+    platform_status: "--"
+    estado_proveedor: "No Entregado"
+    estado_operadora: "No Entregado"

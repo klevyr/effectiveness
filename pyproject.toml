@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "efectividad"
+version = "0.0.1"
+description = "Generador de reportes de efectividad"
+authors = [
+    { name = "Klever Ramon" }
+]
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+  "pandas",
+  "paramiko",
+  "polars",
+  "pyyaml",
+  "tqdm",
+  "typer",
+  "xlsxwriter",
+  "pyarrow"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+efectividad = "efectividad.cli:app"
