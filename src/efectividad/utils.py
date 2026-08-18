@@ -1,159 +1,265 @@
-"""Package efectividad.
+"""Utilidades y controladores de sistema.
 
-Submodulo para la geeracion de informes de efectividad
+Migrados desde ``bootstrap2.py``: OSTransfersController, SFTPManager,
+SplitNamesEC.
 """
+from __future__ import annotations
+
+import configparser
+import logging
+import os
+import re
+import zipfile
+from pathlib import Path
+from subprocess import PIPE, Popen
+
+import paramiko
+
+from efectividad.logger import setup_logger
+
+log = setup_logger()
+
+
+# ---------------------------------------------------------------------------
+# AS400 Transfers
+# ---------------------------------------------------------------------------
+
 class OSTransfersController:
-    # Transferencias AS400: ACSBundle
-    transferfolder = ""
-    currentTransferFile = ""
-    _main_dir = ""
-    _us_transfer = ""
-    _pw_transfer = ""
-    
-    def __init__(self, 
-                 transferFolder="D:/com/jupyter/Procesos/AfiliacionMasiva/Diners/transfer/"
-                ):
-        self.log = {}
-        self.transferfolder = transferFolder
-        self.currentTransferFile = ""
-        self._main_dir = "D:/com/lab"
-        self._us_transfer = _L5rHg47L
-        self._pw_transfer = _P4O0NJ2v
-        self.set_logger()
+    """Controla transferencias AS400 vía ``acsbundle.jar``."""
 
-    def set_logger(self):
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s %(levelname)-8s %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+    def __init__(
+        self,
+        transfer_folder: str | Path,
+        as400_user: str,
+        as400_pass: str,
+        acsbundle_path: str | Path,
+    ) -> None:
+        self.transfer_folder = Path(transfer_folder)
+        self.transfer_folder.mkdir(parents=True, exist_ok=True)
+        self._user = as400_user
+        self._pass = as400_pass
+        self._acsbundle = Path(acsbundle_path)
+        self._current_transfer: Path | None = None
+
+    def set_config_transfer(
+        self,
+        file_transfer: str,
+        config_section: str,
+        config_key: str,
+        config_value: str,
+    ) -> None:
+        """Modifica un parámetro en un archivo de transferencia."""
+        self._current_transfer = self.transfer_folder / file_transfer
+        cfg = configparser.ConfigParser()
+        cfg.optionxform = str  # type: ignore[assignment]
+        cfg.read(self._current_transfer)
+        log.info("Cambio %s[%s] → %s", config_section, config_key, config_value)
+        cfg.set(config_section, config_key, config_value)
+        with open(self._current_transfer, "w", encoding="utf-8") as fh:
+            cfg.write(fh, False)
+
+    def acsbundle_init(self) -> None:
+        """Inicializa sesión con AS400."""
+        proc = Popen(
+            [
+                "java", "-jar", str(self._acsbundle),
+                "/plugin=logon",
+                "/system=AS400F35",
+                f"/userid={self._user}",
+                f"/password={self._pass}",
+                "/gui=0",
+            ],
+            stdin=PIPE, stdout=PIPE, stderr=PIPE,
         )
-        self.log = logging.getLogger()
-
-    def set_config_transfer(self, filetransfer, configsection,
-                            configkey, configvalue):
-        """
-        Lee los archivos de transferencis AS400 y modifica los
-        parametros especificados
-        """
-        config = configparser.ConfigParser()
-        config.optionxform = str # type: ignore
-        self.set_current_transfer_filename(filetransfer)
-        config.read(self.currentTransferFile)
-        self.log.info("Change in section %s[%s]:%s" %
-                      (configsection, configkey, configvalue)
-                      )
-        config.set(configsection, configkey, configvalue)
-        with open(self.currentTransferFile, 'w') as cfgfile:
-            config.write(cfgfile, False)
-    
-    def set_current_transfer_filename(self, filetransfer):
-        """
-        Lee los archivos de transferencis AS400 y modifica los
-        parametros especificados
-        """
-        self.log.info("> Init transfer file: `%s`" % (filetransfer))
-        self.currentTransferFile = self.transferfolder + filetransfer
-        return self
-
-    def acsbundle_init(self):
-        """
-        Inicializa la nueva version de transferencia utilizando el programa `acsbundle.jar`
-        para realizar las tranferencias del gestor.
-        """
-        proc = Popen(["java", "-jar", f"{self._main_dir}/.cfg/acsbundle.jar", "/plugin=logon", "/system=AS400F35",
-                    f"/userid={self._us_transfer}", f"/password={self._pw_transfer}",
-                    "/gui=0"], stdin=PIPE, stdout=PIPE, stderr=PIPE)
         output, err = proc.communicate()
         if err:
-            self.log.error(f"{err.decode('utf-8')} in {os.path.realpath(__file__)}")
-        for line in output.decode('ISO8859-1').split('\r\n'):
-            self.log.info(line)
+            log.error("acsbundle_init error: %s", err.decode("utf-8", errors="replace"))
+        for line in output.decode("ISO8859-1", errors="replace").splitlines():
+            if line.strip():
+                log.info(line)
 
-    def acsbundle_upload(self):
-        """
-        Realiza la carga de archivos al as400.
-        """
-        proc = Popen(["java", "-jar", f"{self._main_dir}/.cfg/acsbundle.jar", "/plugin=upload",
-                      self.currentTransferFile, f"/userid={self._us_transfer}"],
-                      stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    def acsbundle_download(self) -> None:
+        """Descarga archivos desde AS400."""
+        if self._current_transfer is None:
+            log.error("No hay transferencia configurada")
+            return
+        proc = Popen(
+            [
+                "java", "-jar", str(self._acsbundle),
+                "/plugin=download",
+                "/system=AS400F35",
+                f"/userid={self._user}",
+                str(self._current_transfer),
+            ],
+            stdin=PIPE, stdout=PIPE, stderr=PIPE,
+        )
         output, err = proc.communicate()
         if err:
-            self.log.error(err)
-        for line in output.decode('ISO8859-1').split('\n'):
-            if line.strip()[:6].upper() == "FILAS ":
-                rows = line.strip().split(':')[1].strip()
-                self.log.info(f"> {rows} rows uploaded")
+            log.error("acsbundle_download error: %s", err)
+        for line in output.decode("ISO8859-1", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped[:6].upper() == "FILAS ":
+                rows = stripped.split(":")[1].strip()
+                log.info("Descargadas %s filas", rows)
 
-
-    def acsbundle_download(self):
-        """
-        Realiza la descarga de archivos del as400.
-        """
-        proc = Popen(["java", "-jar", f"{self._main_dir}/.cfg/acsbundle.jar", "/plugin=download",
-                      "/system=AS400F35", f"/userid={self._us_transfer}", self.currentTransferFile],
-                      stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    def acsbundle_upload(self) -> None:
+        """Carga archivos a AS400."""
+        if self._current_transfer is None:
+            log.error("No hay transferencia configurada")
+            return
+        proc = Popen(
+            [
+                "java", "-jar", str(self._acsbundle),
+                "/plugin=upload",
+                str(self._current_transfer),
+                f"/userid={self._user}",
+            ],
+            stdin=PIPE, stdout=PIPE, stderr=PIPE,
+        )
         output, err = proc.communicate()
         if err:
-            self.log.error(err)
-        for line in output.decode('ISO8859-1').split('\n'):
-            if line.strip()[:6].upper() == "FILAS ":
-                rows = line.strip().split(':')[1].strip()
-                self.log.info(f"> {rows} rows downloaded")
+            log.error("acsbundle_upload error: %s", err)
+        for line in output.decode("ISO8859-1", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped[:6].upper() == "FILAS ":
+                rows = stripped.split(":")[1].strip()
+                log.info("Subidas %s filas", rows)
 
 
+# ---------------------------------------------------------------------------
+# SFTP Manager
+# ---------------------------------------------------------------------------
 
-# In[ ]:
 class SFTPManager:
-    
-    client = paramiko.SSHClient()
-    default_path = ""
-    
-    def __init__(self):
-        self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.default_path = './LINK MOBILE LINKMBL BTS_ SMS/'
+    """Descarga de archivos vendor desde SFTP."""
 
-    def getFilesList(self):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        uid: str,
+        pwd: str,
+        remote_path: str = "./LINK MOBILE LINKMBL BTS_ SMS/",
+        local_dir: str | Path = "./vendor",
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._uid = uid
+        self._pwd = pwd
+        self._remote_path = remote_path
+        self._local_dir = Path(local_dir)
+        self._local_dir.mkdir(parents=True, exist_ok=True)
+
+    def _connect(self) -> paramiko.SFTPClient:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            self._host,
+            self._port,
+            self._uid,
+            self._pwd,
+            allow_agent=False,
+            look_for_keys=False,
+        )
+        return client.open_sftp()
+
+    def get_files_list(self) -> list[str]:
+        """Lista archivos disponibles en el directorio remoto."""
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            self.client.connect(
-                sftp_host,
-                sftp_port,
-                sftp_uid,
-                sftp_pwd,
-                allow_agent=False,
-                look_for_keys=False)
-            # Abrir sesión SFTP
-            sftp = self.client.open_sftp()
-            print("Conexión SFTP exitosa")
-            # lista archivos disponibles
-            files_available = [archivo for archivo in sftp.listdir(self.default_path)]
-            return files_available
+            client.connect(
+                self._host, self._port, self._uid, self._pwd,
+                allow_agent=False, look_for_keys=False,
+            )
+            sftp = client.open_sftp()
+            log.info("Conexión SFTP exitosa")
+            files = sorted(sftp.listdir(self._remote_path))
             sftp.close()
+            return files
         finally:
-            self.client.close()
-        
-    def downloadSelectedFile(self, selected_filename):
+            client.close()
+
+    def download_file(self, filename: str) -> Path:
+        """Descarga un archivo y lo comprime como ZIP.
+
+        Parameters
+        ----------
+        filename : str
+            Nombre del archivo en el servidor remoto.
+
+        Returns
+        -------
+        Path
+            Ruta del archivo ZIP local.
+        """
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            print(f"⏳ Iniciando descarga `{selected_filename}`..", end='')
-            self.client.connect(
-                sftp_host,
-                sftp_port,
-                sftp_uid,
-                sftp_pwd,
-                allow_agent=False,
-                look_for_keys=False)
-            # Abrir sesión SFTP
-            sftp = self.client.open_sftp()
-            # descarga archivo
-            download_file = f"./vendor/{selected_filename}"
-            sftp.get(f"{self.default_path}/{selected_filename}", download_file)
-            print(f".🗄️comprimiendo..", end='')
-            with zipfile.ZipFile(f"{download_file}.zip", "w", zipfile.ZIP_DEFLATED) as zipf:
-                zipf.write(download_file, arcname=os.path.basename(download_file))
-            print(f". 🟢 finalizado.")
-            os.unlink(download_file)
+            log.info("Descargando %s...", filename)
+            client.connect(
+                self._host, self._port, self._uid, self._pwd,
+                allow_agent=False, look_for_keys=False,
+            )
+            sftp = client.open_sftp()
+            local_file = self._local_dir / filename
+            sftp.get(f"{self._remote_path}/{filename}", str(local_file))
             sftp.close()
+
+            zip_path = self._local_dir / f"{filename}.zip"
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.write(local_file, arcname=local_file.name)
+            local_file.unlink()
+            log.info("Descarga completada: %s", zip_path)
+            return zip_path
         finally:
-            self.client.close()
-        
-    
+            client.close()
+
+
+# ---------------------------------------------------------------------------
+# Nombre helpers
+# ---------------------------------------------------------------------------
+
+class SplitNamesEC:
+    """Separación de nombres completos ecuatorianos."""
+
+    _ESPECIALES = frozenset([
+        "da", "de", "di", "do", "del", "la", "las",
+        "le", "los", "mac", "mc", "van", "von", "y", "i", "san", "santa",
+    ])
+
+    def split(self, nombre: str) -> tuple[str, str, str, str]:
+        """Retorna (nombre1, nombre2, apellido1, apellido2)."""
+        tokens = nombre.split()
+        parts: list[str] = []
+        prev = ""
+        for tok in tokens:
+            if tok.lower() in self._ESPECIALES:
+                prev += tok + " "
+            else:
+                parts.append(prev + tok)
+                prev = ""
+
+        n = len(parts)
+        n1 = n2 = a1 = a2 = ""
+
+        if n == 0:
+            pass
+        elif n == 1:
+            n1 = parts[0]
+        elif n == 2:
+            a1, n1 = parts
+        elif n == 3:
+            a1, a2, n1 = parts
+        elif n == 4:
+            a1, a2, n1, n2 = parts
+        else:
+            a1, a2 = parts[0], parts[1]
+            n1 = parts[2]
+            n2 = " ".join(parts[3:5])
+
+        return (n1.title(), n2.title(), a1.title(), a2.title())
+
+    def val_identification_number(self, cid: str) -> bool:
+        """Valida cédula/ruc ecuatoriana de 10 dígitos."""
+        return bool(re.fullmatch(r"[0-9]{10}", cid))

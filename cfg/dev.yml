@@ -1,3 +1,12 @@
+# Configuración de entorno - Efectividad SMS
+env: dev
+
+# Rutas de datos (relativas al directorio del proyecto)
+paths:
+  data: ./data
+  vendor: ./vendor
+  transfer: ./transferencias
+  export: ./exportaciones
 
 # Configuración de estados del proveedor
 statuses:
@@ -20,3 +29,51 @@ statuses:
     platform_status: "--"
     estado_proveedor: "No Entregado"
     estado_operadora: "No Entregado"
+
+# Credenciales (valores placeholder - los reales se leen de ENV)
+# SFTP_HOST, SFTP_PORT, SFTP_UID, SFTP_PWD
+# AS400_USER, AS400_PASS
+
+# Configuración de transferencias AS400
+as400:
+  system: AS400F35
+  acsbundle_path: ./.cfg/acsbundle.jar
+
+# Configuración SFTP
+sftp:
+  remote_path: ./LINK MOBILE LINKMBL BTS_ SMS/
+
+# Columnas del gestor (CSV broadcast/megareport)
+gestor_columns:
+  - Fecha
+  - Entidad
+  - Marca
+  - Hora
+  - IdCodigo
+  - Tarjeta_Cuenta
+  - Cedula
+  - NumCel
+  - Mensaje
+  - ConfId
+  - IdUsuario
+
+# Checks de validación por defecto
+validation_checks:
+  "0270": "Consumos"
+  "0002": "Pagos"
+  "0001": "Saldos"
+  "0969": "Actuales cierre"
+  "4225": "OTP Placetopay"
+  "0923": "Actuales cierre"
+  "0260": "PINES"
+  "0279": "Consumos ATM"
+
+# Configuración de报告es adicionales (entidades externas)
+other_reports:
+  BcoPichincha: PI
+  BGR: RU
+
+# Umbral de aceptación para validación
+validation_threshold:
+  pass: 0.99
+  warning: 0.95

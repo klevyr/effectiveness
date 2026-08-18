@@ -4,23 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "efectividad"
-version = "0.0.1"
+version = "0.1.0"
 description = "Generador de reportes de efectividad"
 authors = [
     { name = "Klever Ramon" }
 ]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 dependencies = [
-  "pandas",
+  "polars[calendars,xlsx]>=1.0",
   "paramiko",
-  "polars",
+  "pyarrow",
   "pyyaml",
-  "tqdm",
-  "typer",
-  "xlsxwriter",
-  "pyarrow"
+  "typer[all]",
 ]
 
 [tool.setuptools]
@@ -31,3 +28,7 @@ where = ["src"]
 
 [project.scripts]
 efectividad = "efectividad.cli:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

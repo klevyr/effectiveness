@@ -1,4 +1,2 @@
-"""Package efectividad.
-
-Submodulo para la geeracion de informes de efectividad
-"""
+"""Efectividad SMS - Generador de reportes de efectividad."""
+__version__ = "0.1.0"

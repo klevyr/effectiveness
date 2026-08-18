@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Efectividad - Datos generados
+data/
+exportaciones/
+vendor/
+transferencias/
+
+# Efectividad - Archivos de configuración local
+.env
