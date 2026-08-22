@@ -112,6 +112,13 @@ def process(
         else:
             log.info("1/5 Transferencias omitidas (--skip-transfers)")
 
+        # 1.1 Desacrga archivos sftp (si aplica)
+        if not skip_transfers:
+            log.info("1/5 Descargando transferencias AS400...")
+            #_run_transfers(cfg, transfer_dir, date_str)
+        else:
+            log.info("1/5 Transferencias omitidas (--skip-transfers)")
+
         # 2. Cargar gestor
         log.info("2/5 Cargando datos del gestor...")
         load_gestor(transfer_dir, base_path, date_str, skip_transfers=skip_transfers)
@@ -298,15 +305,13 @@ def _run_transfers(cfg: dict, transfer_dir: Path, date_str: str) -> None:
         as400_pass=as400_cfg.get("password", ""),
         acsbundle_path=as400_cfg.get("acsbundle_path", "./.cfg/acsbundle.jar"),
     )
-
+    transfers.acsbundle_init()
     # Configurar filtros de transferencia
-    for file_name in ["Broadcast.dtfx", "MetroLine.dtfx"]:
+    for file_name in cfg["as400"].get("transfer_icons", []):
         transfers.set_config_transfer(
             file_name,
             config_section="SQL",
             config_key="Where",
             config_value=f"S1XX84W NOT IN ('0000000000','0') AND S1Z141Q2 = '{date_str}'",
         )
-
-    transfers.acsbundle_init()
-    transfers.acsbundle_download()
+        transfers.acsbundle_download()

@@ -5,8 +5,8 @@ env: dev
 paths:
   data: ./data
   vendor: ./vendor
-  transfer: ./transferencias
-  export: ./exportaciones
+  transfer: ./transfers
+  export: ./exports
 
 # Configuración de estados del proveedor
 statuses:
@@ -36,8 +36,9 @@ statuses:
 
 # Configuración de transferencias AS400
 as400:
+  transfer_icons: ["Broadcast.dtfx", "MetroLine.dtfx"]
   system: AS400F35
-  acsbundle_path: ./.cfg/acsbundle.jar
+  acsbundle_path: ./bin/acsbundle.jar
 
 # Configuración SFTP
 sftp:

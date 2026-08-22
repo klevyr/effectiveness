@@ -218,10 +218,14 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Efectividad - Datos generados
+bin/
 data/
-exportaciones/
+exports/
 vendor/
-transferencias/
+test/
+transfers/
+*.csv
+*.parquet
 
 # Efectividad - Archivos de configuración local
 .env

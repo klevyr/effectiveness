@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import dotenv_values
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -31,6 +32,27 @@ def _env(key: str, default: str | None = None, required: bool = False) -> str:
     return val or ""
 
 
+def _load_env_values() -> dict[str, str | None]:
+    """Carga los valores del archivo .env si existe."""
+    env_file = _PROJECT_ROOT / ".env"
+    return dotenv_values(env_file) if env_file.exists() else {}
+
+
+def _config_env(
+    key: str,
+    env_values: dict[str, str | None],
+    default: str | None = None,
+    required: bool = False,
+) -> str:
+    """Lee una clave desde .env y usa el entorno como respaldo."""
+    value = env_values.get(key)
+    if value is None:
+        value = os.environ.get(key, default)
+    if required and value is None:
+        raise EnvironmentError(f"Variable de entorno requerida no encontrada: {key}")
+    return value or ""
+
+
 def load_config(env: str = "dev") -> dict[str, Any]:
     """Carga la configuración completa desde el YAML del entorno indicado.
 
@@ -51,6 +73,8 @@ def load_config(env: str = "dev") -> dict[str, Any]:
     with open(cfg_file, encoding="utf-8") as fh:
         raw: dict[str, Any] = yaml.safe_load(fh)
 
+    env_values = _load_env_values()
+
     # Resolver rutas relativas
     paths_cfg: dict[str, str] = raw.get("paths", {})
     paths: dict[str, Path] = {}
@@ -61,13 +85,13 @@ def load_config(env: str = "dev") -> dict[str, Any]:
 
     # Credenciales desde variables de entorno
     raw["sftp"] = raw.get("sftp") or {}
-    raw["sftp"]["host"] = _env("SFTP_HOST", required=True)
-    raw["sftp"]["port"] = int(_env("SFTP_PORT", "22"))
-    raw["sftp"]["uid"] = _env("SFTP_UID", required=True)
-    raw["sftp"]["pwd"] = _env("SFTP_PWD", required=True)
+    raw["sftp"]["host"] = _config_env("SFTP_HOST", env_values, required=True)
+    raw["sftp"]["port"] = int(_config_env("SFTP_PORT", env_values, "22"))
+    raw["sftp"]["uid"] = _config_env("SFTP_UID", env_values, required=True)
+    raw["sftp"]["pwd"] = _config_env("SFTP_PWD", env_values, required=True)
 
     raw["as400"] = raw.get("as400") or {}
-    raw["as400"]["user"] = _env("AS400_USER", required=True)
-    raw["as400"]["password"] = _env("AS400_PASS", required=True)
+    raw["as400"]["user"] = _config_env("AS400_USER", env_values, required=True)
+    raw["as400"]["password"] = _config_env("AS400_PASS", env_values, required=True)
 
     return raw

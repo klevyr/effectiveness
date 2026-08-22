@@ -17,6 +17,7 @@ dependencies = [
   "paramiko",
   "pyarrow",
   "pyyaml",
+  "python-dotenv",
   "typer[all]",
 ]
 
