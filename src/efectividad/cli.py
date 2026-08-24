@@ -86,7 +86,10 @@ def process(
         None, "--hasta", "-h", help="Fecha fin rango (YYYYMMDD)"
     ),
     skip_transfers: bool = typer.Option(
-        False, "--skip-transfers", "-s", help="Omitir descarga de transferencias AS400"
+        False, "--skip-transfers", "-st", help="Omitir descarga de transferencias AS400"
+    ),
+    skip_vendor: bool = typer.Option(
+        False, "--skip_vendor", "-sv", help="Omitir descarga de proveedores"
     ),
     env: str = typer.Option("dev", "--env", "-e", help="Entorno de configuración"),
 ) -> None:
@@ -107,32 +110,32 @@ def process(
 
         # 1. Transferencias AS400 (si aplica)
         if not skip_transfers:
-            log.info("1/5 Descargando transferencias AS400...")
+            log.info("1/6 Descargando transferencias AS400...")
             _run_transfers(cfg, transfer_dir, date_str)
         else:
-            log.info("1/5 Transferencias omitidas (--skip-transfers)")
+            log.info("1/6 Transferencias omitidas (--skip-transfers)")
 
         # 1.1 Desacrga archivos sftp (si aplica)
-        if not skip_transfers:
-            log.info("1/5 Descargando transferencias AS400...")
-            #_run_transfers(cfg, transfer_dir, date_str)
+        if not skip_vendor:
+            log.info("2/6 Descargando archivos proveedor...")
+            # _run_transfers(cfg, transfer_dir, date_str)
         else:
-            log.info("1/5 Transferencias omitidas (--skip-transfers)")
+            log.info("2/6 Archivos omitidos (--skip-vendor)")
 
         # 2. Cargar gestor
-        log.info("2/5 Cargando datos del gestor...")
+        log.info("2/6 Cargando datos del gestor...")
         load_gestor(transfer_dir, base_path, date_str, skip_transfers=skip_transfers)
 
         # 3. Cargar vendor
-        log.info("3/5 Cargando datos del vendor...")
+        log.info("3/6 Cargando datos del vendor...")
         load_vendor(vendor_dir, base_path, date_str)
 
         # 4. Generar efectividad
-        log.info("4/5 Generando consolidado de efectividad...")
+        log.info("4/6 Generando consolidado de efectividad...")
         generate_effectiveness(base_path, date_str)
 
         # 5. Generar reporte global
-        log.info("5/5 Generando reporte global...")
+        log.info("5/6 Generando reporte global...")
         generate_global_report(base_path, date_str, statuses)
 
         # Validación

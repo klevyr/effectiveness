@@ -3,6 +3,7 @@
 Exporta informes de efectividad a Excel basándose en la configuración
 de estados y entidades.
 """
+
 from __future__ import annotations
 
 import re
@@ -12,11 +13,9 @@ import polars as pl
 
 from efectividad.logger import setup_logger
 from efectividad.storage import read_parquet
-from efectividad.utils import SplitNamesEC
 
 log = setup_logger()
 
-_name_splitter = SplitNamesEC()
 _ID_RE = re.compile(r"^[0-9]{10}$")
 
 
@@ -144,10 +143,16 @@ def _export_report(report: pl.DataFrame, filepath: Path) -> None:
 def _filter_rechazos(report: pl.DataFrame) -> pl.DataFrame:
     """Filtra registros rechazados para análisis de cartera."""
     required_cols = [
-        "Estado_Operadora", "Estado_Proveedor", "Volumen",
-        "Porc_Rechazo", "Entidad", "Tarjeta_Cuenta",
-        "Desc_AreaCampania", "DescriptionStatus",
-        "Num_Doc_Identificacion", "NumCelular",
+        "Estado_Operadora",
+        "Estado_Proveedor",
+        "Volumen",
+        "Porc_Rechazo",
+        "Entidad",
+        "Tarjeta_Cuenta",
+        "Desc_AreaCampania",
+        "DescriptionStatus",
+        "Num_Doc_Identificacion",
+        "NumCelular",
     ]
     if not all(c in report.columns for c in required_cols):
         return pl.DataFrame()
@@ -159,10 +164,14 @@ def _filter_rechazos(report: pl.DataFrame) -> pl.DataFrame:
         & (pl.col("Porc_Rechazo") == 100.0)
         & (pl.col("Entidad").is_in(["DC", "ID"]))
         & (pl.col("Desc_AreaCampania") == "Analisis de Cartera")
-        & (pl.col("DescriptionStatus").is_in([
-            "MT number is unknown (code 1)",
-            "Teleservice Not Provisioned (code 11)",
-        ]))
+        & (
+            pl.col("DescriptionStatus").is_in(
+                [
+                    "MT number is unknown (code 1)",
+                    "Teleservice Not Provisioned (code 11)",
+                ]
+            )
+        )
     )
 
     # Validar cédula de 10 dígitos

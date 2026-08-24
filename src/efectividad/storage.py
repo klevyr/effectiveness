@@ -3,6 +3,7 @@
 Proporciona funciones de lectura, escritura y gestión de archivos Parquet
 organizados por tabla y fecha.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -58,7 +59,7 @@ def write_parquet(
         existing = read_parquet(base_path, table, date_str)
         df = pl.concat([existing, df])
 
-    df.write_parquet(target_file, engine="pyarrow")
+    df.write_parquet(target_file)
     log.info("Escrito %s registros en %s", df.height, target_file)
     return target_file
 

@@ -3,6 +3,7 @@
 Migrados desde ``bootstrap2.py``: OSTransfersController, SFTPManager,
 SplitNamesEC.
 """
+
 from __future__ import annotations
 
 import configparser
@@ -23,6 +24,7 @@ log = setup_logger()
 # ---------------------------------------------------------------------------
 # AS400 Transfers
 # ---------------------------------------------------------------------------
+
 
 class OSTransfersController:
     """Controla transferencias AS400 vía ``acsbundle.jar``."""
@@ -62,14 +64,18 @@ class OSTransfersController:
         """Inicializa sesión con AS400."""
         proc = Popen(
             [
-                "java", "-jar", str(self._acsbundle),
+                "java",
+                "-jar",
+                str(self._acsbundle),
                 "/plugin=logon",
                 "/system=AS400F35",
                 f"/userid={self._user}",
                 f"/password={self._pass}",
                 "/gui=0",
             ],
-            stdin=PIPE, stdout=PIPE, stderr=PIPE,
+            stdin=PIPE,
+            stdout=PIPE,
+            stderr=PIPE,
         )
         output, err = proc.communicate()
         if err:
@@ -85,13 +91,17 @@ class OSTransfersController:
             return
         proc = Popen(
             [
-                "java", "-jar", str(self._acsbundle),
+                "java",
+                "-jar",
+                str(self._acsbundle),
                 "/plugin=download",
                 "/system=AS400F35",
                 f"/userid={self._user}",
                 str(self._current_transfer),
             ],
-            stdin=PIPE, stdout=PIPE, stderr=PIPE,
+            stdin=PIPE,
+            stdout=PIPE,
+            stderr=PIPE,
         )
         output, err = proc.communicate()
         if err:
@@ -109,12 +119,16 @@ class OSTransfersController:
             return
         proc = Popen(
             [
-                "java", "-jar", str(self._acsbundle),
+                "java",
+                "-jar",
+                str(self._acsbundle),
                 "/plugin=upload",
                 str(self._current_transfer),
                 f"/userid={self._user}",
             ],
-            stdin=PIPE, stdout=PIPE, stderr=PIPE,
+            stdin=PIPE,
+            stdout=PIPE,
+            stderr=PIPE,
         )
         output, err = proc.communicate()
         if err:
@@ -129,6 +143,7 @@ class OSTransfersController:
 # ---------------------------------------------------------------------------
 # SFTP Manager
 # ---------------------------------------------------------------------------
+
 
 class SFTPManager:
     """Descarga de archivos vendor desde SFTP."""
@@ -169,8 +184,12 @@ class SFTPManager:
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             client.connect(
-                self._host, self._port, self._uid, self._pwd,
-                allow_agent=False, look_for_keys=False,
+                self._host,
+                self._port,
+                self._uid,
+                self._pwd,
+                allow_agent=False,
+                look_for_keys=False,
             )
             sftp = client.open_sftp()
             log.info("Conexión SFTP exitosa")
@@ -198,8 +217,12 @@ class SFTPManager:
         try:
             log.info("Descargando %s...", filename)
             client.connect(
-                self._host, self._port, self._uid, self._pwd,
-                allow_agent=False, look_for_keys=False,
+                self._host,
+                self._port,
+                self._uid,
+                self._pwd,
+                allow_agent=False,
+                look_for_keys=False,
             )
             sftp = client.open_sftp()
             local_file = self._local_dir / filename
@@ -214,52 +237,3 @@ class SFTPManager:
             return zip_path
         finally:
             client.close()
-
-
-# ---------------------------------------------------------------------------
-# Nombre helpers
-# ---------------------------------------------------------------------------
-
-class SplitNamesEC:
-    """Separación de nombres completos ecuatorianos."""
-
-    _ESPECIALES = frozenset([
-        "da", "de", "di", "do", "del", "la", "las",
-        "le", "los", "mac", "mc", "van", "von", "y", "i", "san", "santa",
-    ])
-
-    def split(self, nombre: str) -> tuple[str, str, str, str]:
-        """Retorna (nombre1, nombre2, apellido1, apellido2)."""
-        tokens = nombre.split()
-        parts: list[str] = []
-        prev = ""
-        for tok in tokens:
-            if tok.lower() in self._ESPECIALES:
-                prev += tok + " "
-            else:
-                parts.append(prev + tok)
-                prev = ""
-
-        n = len(parts)
-        n1 = n2 = a1 = a2 = ""
-
-        if n == 0:
-            pass
-        elif n == 1:
-            n1 = parts[0]
-        elif n == 2:
-            a1, n1 = parts
-        elif n == 3:
-            a1, a2, n1 = parts
-        elif n == 4:
-            a1, a2, n1, n2 = parts
-        else:
-            a1, a2 = parts[0], parts[1]
-            n1 = parts[2]
-            n2 = " ".join(parts[3:5])
-
-        return (n1.title(), n2.title(), a1.title(), a2.title())
-
-    def val_identification_number(self, cid: str) -> bool:
-        """Valida cédula/ruc ecuatoriana de 10 dígitos."""
-        return bool(re.fullmatch(r"[0-9]{10}", cid))

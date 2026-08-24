@@ -2,9 +2,11 @@
 
 Transforma y almacena los datos en Parquet vía la capa de storage.
 """
+
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from efectividad.storage import read_parquet, write_parquet
 log = setup_logger()
 
 _GESTOR_COLS: list[str] = list(GESTOR_SCHEMA.keys())
+_ONLY_ASCII = r"[^A-Za-z0-9,.\-]"
 
 
 def _md5(text: str) -> str:
@@ -32,6 +35,7 @@ def _parse_timestamp_gestor(fecha: str, hora: str) -> float:
 # ---------------------------------------------------------------------------
 # Gestor
 # ---------------------------------------------------------------------------
+
 
 def load_gestor(
     transfer_dir: str | Path,
@@ -84,11 +88,13 @@ def load_gestor(
     result = pl.concat(frames, how="diagonal_relaxed")
 
     # Limpiar nulos en columnas de texto
-    result = result.with_columns([
-        pl.col("Cedula").fill_null(""),
-        pl.col("ConfId").fill_null(""),
-        pl.col("Mensaje").fill_null(""),
-    ])
+    result = result.with_columns(
+        [
+            pl.col("Cedula").fill_null(""),
+            pl.col("ConfId").fill_null(""),
+            pl.col("Mensaje").fill_null(""),
+        ]
+    )
 
     # Calcular timestamp UTC
     result = result.with_columns(
@@ -99,10 +105,16 @@ def load_gestor(
         )
         .alias("tsges")
     )
+    # Generar MD5 solo de caracteres ASCII
+    result = result.with_columns(
+        pl.col("Mensaje").str.replace_all(_ONLY_ASCII, "").alias("Mensaje_trim")
+    )
 
     # Calcular MD5 del mensaje
     result = result.with_columns(
-        pl.col("Mensaje").map_elements(_md5, return_dtype=pl.Utf8).alias("MensajeMD5")
+        pl.col("Mensaje_trim")
+        .map_elements(_md5, return_dtype=pl.Utf8)
+        .alias("MensajeMD5")
     )
 
     log.info("Gestor cargado: %s registros", result.height)
@@ -113,6 +125,7 @@ def load_gestor(
 # ---------------------------------------------------------------------------
 # Vendor
 # ---------------------------------------------------------------------------
+
 
 def load_vendor(
     vendor_dir: str | Path,
@@ -139,7 +152,9 @@ def load_vendor(
     zip_files = sorted(vdir.glob(f"*{date_str}*.zip"))
 
     if not zip_files:
-        log.warning("No se encontraron archivos ZIP para fecha %s en %s", date_str, vdir)
+        log.warning(
+            "No se encontraron archivos ZIP para fecha %s en %s", date_str, vdir
+        )
         return pl.DataFrame()
 
     frames: list[pl.DataFrame] = []
@@ -166,7 +181,7 @@ def load_vendor(
     )
 
     # Registros válidos (con fecha parseable)
-    valid = result.filter(pl.col("Date_parsed").is_not_null()).copy()
+    valid = result.filter(pl.col("Date_parsed").is_not_null())
 
     if valid.is_empty():
         log.warning("Todos los registros del vendor tienen fecha inválida")
@@ -174,28 +189,35 @@ def load_vendor(
 
     # Limpiar mensaje: reemplazar triples comillas
     valid = valid.with_columns(
-        pl.col("Message")
-        .str.replace_all('"', "")
-        .fill_null("nd")
+        pl.col("Message").str.replace_all('"', "").fill_null("nd")
+    )
+
+    # Campo texto solo ASCII
+    valid = valid.with_columns(
+        pl.col("Message").str.replace_all(_ONLY_ASCII, "").alias("Message_trim")
     )
 
     # Agregar columnas derivadas
-    valid = valid.with_columns([
-        pl.col("Date_parsed").dt.strftime("%Y-%m-%d").alias("Fecha"),
-        pl.col("Date_parsed").dt.strftime("%H.%M.%S").alias("Hora"),
-    ])
+    valid = valid.with_columns(
+        [
+            pl.col("Date_parsed").dt.strftime("%Y-%m-%d").alias("Fecha"),
+            pl.col("Date_parsed").dt.strftime("%H.%M.%S").alias("Hora"),
+        ]
+    )
 
     valid = valid.with_columns(
         pl.col("Date_parsed")
         .map_elements(
-            lambda r: r.replace(tzinfo=timezone.utc).timestamp() if r is not None else 0.0,
+            lambda r: (
+                r.replace(tzinfo=timezone.utc).timestamp() if r is not None else 0.0
+            ),
             return_dtype=pl.Float64,
         )
         .alias("tsvend")
     )
 
     valid = valid.with_columns(
-        pl.col("Message")
+        pl.col("Message_trim")
         .map_elements(_md5, return_dtype=pl.Utf8)
         .alias("MessageMD5")
     )
