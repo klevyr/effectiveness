@@ -102,6 +102,8 @@ def process(
     dates = _resolve_dates(fecha, desde, hasta, yesterday=True)
     statuses = cfg.get("statuses", [])
     checks = cfg.get("validation_checks", {})
+    gestor_columns = cfg.get("gestor_columns", [])
+    vendor_columns = cfg.get("vendor_columns", [])
 
     log.info("Procesando %d fecha(s): %s", len(dates), ", ".join(dates))
 
@@ -124,11 +126,11 @@ def process(
 
         # 2. Cargar gestor
         log.info("2/6 Cargando datos del gestor...")
-        load_gestor(transfer_dir, base_path, date_str, skip_transfers=skip_transfers)
+        load_gestor(transfer_dir, base_path, date_str, gestor_columns=gestor_columns, skip_transfers=skip_transfers)
 
         # 3. Cargar vendor
         log.info("3/6 Cargando datos del vendor...")
-        load_vendor(vendor_dir, base_path, date_str)
+        load_vendor(vendor_dir, base_path, date_str, vendor_columns=vendor_columns, skip_vendor=skip_vendor)
 
         # 4. Generar efectividad
         log.info("4/6 Generando consolidado de efectividad...")

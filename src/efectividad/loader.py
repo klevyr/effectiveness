@@ -6,19 +6,16 @@ Transforma y almacena los datos en Parquet vía la capa de storage.
 from __future__ import annotations
 
 import hashlib
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 import polars as pl
 
 from efectividad.logger import setup_logger
-from efectividad.models import GESTOR_SCHEMA
 from efectividad.storage import read_parquet, write_parquet
 
 log = setup_logger()
 
-_GESTOR_COLS: list[str] = list(GESTOR_SCHEMA.keys())
 _ONLY_ASCII = r"[^A-Za-z0-9,.\-]"
 
 
@@ -41,6 +38,7 @@ def load_gestor(
     transfer_dir: str | Path,
     base_path: Path,
     date_str: str,
+    gestor_columns: list[str] | None = None,
     skip_transfers: bool = False,
 ) -> pl.DataFrame:
     """Lee archivos broadcast.csv y megareport.csv, transforma y almacena.
@@ -53,6 +51,8 @@ def load_gestor(
         Directorio raíz de datos Parquet.
     date_str : str
         Fecha en formato ``YYYYMMDD``.
+    gestor_columns : list[str] | None
+        Nombres de columnas del gestor definidos en el YAML de configuración.
     skip_transfers : bool
         Si ``True``, omite la descarga de transferencias AS400.
 
@@ -61,6 +61,12 @@ def load_gestor(
     pl.DataFrame
         DataFrame del gestor transformado.
     """
+    if not gestor_columns:
+        log.error("No se definieron columnas del gestor en la configuración")
+        return pl.DataFrame()
+
+    gestor_schema: dict[str, pl.DataType] = {col: pl.Utf8 for col in gestor_columns}
+
     tdir = Path(transfer_dir)
     frames: list[pl.DataFrame] = []
 
@@ -73,8 +79,8 @@ def load_gestor(
         df = pl.read_csv(
             csv_path,
             has_header=False,
-            new_columns=_GESTOR_COLS,
-            schema_overrides=GESTOR_SCHEMA,
+            new_columns=gestor_columns,
+            schema_overrides=gestor_schema,
             encoding="iso-8859-1",
             null_values=[""],
         )
@@ -131,6 +137,8 @@ def load_vendor(
     vendor_dir: str | Path,
     base_path: Path,
     date_str: str,
+    vendor_columns: list[str] | None = None,
+    skip_vendor: bool = False,
 ) -> pl.DataFrame:
     """Lee archivos ZIP CSV del vendor, transforma y almacena.
 
@@ -142,6 +150,8 @@ def load_vendor(
         Directorio raíz de datos Parquet.
     date_str : str
         Fecha en formato ``YYYYMMDD``.
+    vendor_columns : list[str] | None
+        Nombres de columnas del vendor definidos en el YAML de configuración.
 
     Returns
     -------
@@ -160,7 +170,17 @@ def load_vendor(
     frames: list[pl.DataFrame] = []
     for zf in zip_files:
         log.info("Leyendo vendor: %s", zf.name)
-        df = pl.read_csv(zf, schema_overrides={"Date": pl.Utf8}, encoding="iso-8859-1")
+        read_kwargs: dict = {
+            "schema_overrides": {"Date": pl.Utf8},
+            "encoding": "iso-8859-1",
+            "null_values": [""],
+        }
+        if vendor_columns:
+            read_kwargs["new_columns"] = vendor_columns
+            read_kwargs["has_header"] = False
+        else:
+            read_kwargs["infer_schema"] = True
+        df = pl.read_csv(zf, **read_kwargs)
         frames.append(df)
 
     result = pl.concat(frames, how="diagonal_relaxed")

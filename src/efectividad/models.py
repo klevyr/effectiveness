@@ -2,42 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
-
-import polars as pl
 
 
 # ---------------------------------------------------------------------------
-# Columnas esperadas en cada etapa del pipeline
+# Columnas derivadas (agregadas durante el pipeline, no vienen del archivo)
 # ---------------------------------------------------------------------------
-
-GESTOR_COLUMNS: list[str] = [
-    "Fecha",
-    "Entidad",
-    "Marca",
-    "Hora",
-    "IdCodigo",
-    "Tarjeta_Cuenta",
-    "Cedula",
-    "NumCel",
-    "Mensaje",
-    "ConfId",
-    "IdUsuario",
-]
 
 GESTOR_EXTRA_COLUMNS: list[str] = ["TipoCola", "tsges", "MensajeMD5"]
-
-VENDOR_REQUIRED_COLUMNS: list[str] = [
-    "MobileNumber",
-    "Message",
-    "ApplicationStatus",
-    "PlatformStatus",
-    "DescriptionStatus",
-    "ShortCode",
-    "TransactionID",
-    "Date",
-    "Carrier",
-]
 
 VENDOR_EXTRA_COLUMNS: list[str] = ["Fecha", "Hora", "tsvend", "MessageMD5"]
 
@@ -52,12 +23,12 @@ CONSOLIDATED_COLUMNS: list[str] = [
     "NumCelular",
     "IdUsuario",
     "ConfId",
-    "TransactionID",
+    "TransactionId",
     "Mensaje",
     "Carrier",
     "Fecha_Hora_YP",
     "ApplicationStatus",
-    "PlatformStatus",
+    "PlantformStatus",
     "ShortCode",
     "DescriptionStatus",
     "seconds_diff",
@@ -74,10 +45,10 @@ REPORT_COLUMNS: list[str] = [
     "NumCelular",
     "IdUsuario",
     "Mensaje",
-    "TransactionID",
+    "TransactionId",
     "Operadora",
     "ApplicationStatus",
-    "PlatformStatus",
+    "PlantformStatus",
     "Desc_Campania",
     "Desc_AreaCampania",
     "Tipo_Campania",
@@ -117,22 +88,3 @@ class ValidationResult:
             self.estado = "warning"
         else:
             self.estado = "danger"
-
-
-# ---------------------------------------------------------------------------
-# Schema Polars para lectura de CSVs
-# ---------------------------------------------------------------------------
-
-GESTOR_SCHEMA: dict[str, pl.DataType] = {
-    "Fecha": pl.Utf8,
-    "Entidad": pl.Utf8,
-    "Marca": pl.Utf8,
-    "Hora": pl.Utf8,
-    "IdCodigo": pl.Utf8,
-    "Tarjeta_Cuenta": pl.Utf8,
-    "Cedula": pl.Utf8,
-    "NumCel": pl.Utf8,
-    "Mensaje": pl.Utf8,
-    "ConfId": pl.Utf8,
-    "IdUsuario": pl.Utf8,
-}

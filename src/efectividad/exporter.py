@@ -105,7 +105,7 @@ def generate_length_report(
 
     # Resumen por código y campaña
     summary = long_msgs.group_by(["CdMensaje", "Desc_Campania"]).agg(
-        pl.col("TransactionID").count().alias("Cantidad")
+        pl.col("TransactionId").count().alias("Cantidad")
     )
 
     # Exportar
@@ -130,7 +130,7 @@ def _export_report(report: pl.DataFrame, filepath: Path) -> None:
         group_cols = ["Estado_Proveedor", "Estado_Operadora"]
 
     resume = report.group_by(group_cols).agg(
-        pl.col("TransactionID").count().alias("Volumen")
+        pl.col("TransactionId").count().alias("Volumen")
     )
 
     with pl.ExcelWriter(filepath) as writer:

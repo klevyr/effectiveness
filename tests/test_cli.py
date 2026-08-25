@@ -12,6 +12,15 @@ def test_process_can_generate_reports_at_end():
         "paths": {"data": "./data", "transfer": "./transfer", "vendor": "./vendor"},
         "statuses": [],
         "validation_checks": {},
+        "gestor_columns": [
+            "Fecha", "Entidad", "Marca", "Hora", "IdCodigo",
+            "Tarjeta_Cuenta", "Cedula", "NumCel", "Mensaje", "ConfId", "IdUsuario",
+        ],
+        "vendor_columns": [
+            "MobileNumber", "ShortCode", "Message", "Priority", "TotalFragments",
+            "Type", "Carrier", "Date", "TransactionId", "ApplicationStatus",
+            "ResponseCode", "PlantformStatus", "DescriptionStatus",
+        ],
     }), patch("efectividad.cli._run_transfers"), patch("efectividad.cli.load_gestor"), patch(
         "efectividad.cli.load_vendor"
     ), patch("efectividad.cli.generate_effectiveness"), patch(

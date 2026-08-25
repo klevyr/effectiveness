@@ -122,12 +122,12 @@ def _do_join(
         pl.col("NumCel").alias("NumCelular"),
         pl.col("IdUsuario"),
         pl.col("ConfId"),
-        pl.col("TransactionID"),
+        pl.col("TransactionId"),
         pl.col("Mensaje"),
         pl.col("Carrier"),
         pl.col("Date_parsed").alias("Fecha_Hora_YP"),
         pl.col("ApplicationStatus"),
-        pl.col("PlatformStatus"),
+        pl.col("PlantformStatus"),
         pl.col("ShortCode"),
         pl.col("DescriptionStatus"),
         pl.col("seconds_diff"),
@@ -173,7 +173,7 @@ def generate_global_report(
     # Join con match exacto
     report = consol.join(
         exact_match,
-        left_on=["ApplicationStatus", "PlatformStatus"],
+        left_on=["ApplicationStatus", "PlantformStatus"],
         right_on=["application_status", "platform_status"],
         how="left",
     )

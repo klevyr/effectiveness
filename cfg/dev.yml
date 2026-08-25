@@ -58,6 +58,22 @@ gestor_columns:
   - ConfId
   - IdUsuario
 
+# Columnas del archivo del proveedor
+vendor_columns:
+  - MobileNumber
+  - ShortCode
+  - Message
+  - Priority
+  - TotalFragments
+  - Type
+  - Carrier
+  - Date
+  - TransactionId
+  - ApplicationStatus
+  - ResponseCode
+  - PlantformStatus
+  - DescriptionStatus
+
 # Checks de validación por defecto
 validation_checks:
   "0270": "Consumos"
@@ -78,3 +94,4 @@ other_reports:
 validation_threshold:
   pass: 0.99
   warning: 0.95
+
