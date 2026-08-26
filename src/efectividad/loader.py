@@ -120,7 +120,7 @@ def load_gestor(
     result = result.with_columns(
         pl.col("Mensaje_trim")
         .map_elements(_md5, return_dtype=pl.Utf8)
-        .alias("MensajeMD5")
+        .alias("MessageMD5")
     )
 
     log.info("Gestor cargado: %s registros", result.height)

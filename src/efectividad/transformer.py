@@ -3,6 +3,7 @@
 Realiza el JOIN entre gestor y vendor para generar el consolidado,
 usando Polars en lugar de SQL.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -48,12 +49,16 @@ def generate_effectiveness(
         log.error("No hay datos de vendor para %s", date_str)
         return pl.DataFrame()
 
-    log.info("Generando efectividad para %s (gestor=%d, vendor=%d)",
-             date_str, ges.height, vend.height)
+    log.info(
+        "Generando efectividad para %s (gestor=%d, vendor=%d)",
+        date_str,
+        ges.height,
+        vend.height,
+    )
 
     # Preparar campos de join
     ges = ges.with_columns(pl.col("NumCel").alias("NumCelular"))
-    vend = vend.with_columns(pl.col("MobileNumber").alias("NumCelular_v"))
+    vend = vend.with_columns(pl.col("MobileNumber").alias("NumCelular"))
 
     # Join 1: Estándar (excluye PINES 0260)
     ges_std = ges.filter(pl.col("IdCodigo") != "0260")
@@ -61,7 +66,7 @@ def generate_effectiveness(
 
     # Join 2: PINES (solo código 0260)
     ges_pin = ges.filter(pl.col("IdCodigo") == "0260")
-    join_pin = _do_join(ges_pin, vend, ts_min=-10, ts_max=600)
+    join_pin = _do_join(ges_pin, vend, ts_min=-10, ts_max=600, cross_type="pin")
 
     # Consolidar
     frames = [df for df in [join_std, join_pin] if not df.is_empty()]
@@ -80,6 +85,7 @@ def _do_join(
     vend: pl.DataFrame,
     ts_min: int,
     ts_max: int,
+    cross_type: str = "standard",
 ) -> pl.DataFrame:
     """Realiza el LEFT JOIN entre gestor y vendor con filtro de timestamp.
 
@@ -91,11 +97,14 @@ def _do_join(
     if ges.is_empty():
         return pl.DataFrame()
 
+    _on_join = ["NumCelular", "MessageMD5"]
+    if cross_type != "standard":
+        _on_join = ["NumCelular"]
+
     # Join por número de celular + mensaje MD5
     joined = ges.join(
         vend,
-        left_on=["NumCel", "MensajeMD5"],
-        right_on=["NumCelular_v", "MessageMD5"],
+        on=_on_join,
         how="left",
         suffix="_vend",
     )
@@ -111,27 +120,29 @@ def _do_join(
     )
 
     # Seleccionar y renombrar columnas al formato consolidado
-    result = joined.select([
-        pl.col("Fecha"),
-        pl.col("Hora"),
-        pl.col("Entidad"),
-        pl.col("Marca"),
-        pl.col("IdCodigo").alias("CdMensaje"),
-        pl.col("Tarjeta_Cuenta"),
-        pl.col("Cedula").alias("Num_Doc_Identificacion"),
-        pl.col("NumCel").alias("NumCelular"),
-        pl.col("IdUsuario"),
-        pl.col("ConfId"),
-        pl.col("TransactionId"),
-        pl.col("Mensaje"),
-        pl.col("Carrier"),
-        pl.col("Date_parsed").alias("Fecha_Hora_YP"),
-        pl.col("ApplicationStatus"),
-        pl.col("PlantformStatus"),
-        pl.col("ShortCode"),
-        pl.col("DescriptionStatus"),
-        pl.col("seconds_diff"),
-    ])
+    result = joined.select(
+        [
+            pl.col("Fecha"),
+            pl.col("Hora"),
+            pl.col("Entidad"),
+            pl.col("Marca"),
+            pl.col("IdCodigo").alias("CdMensaje"),
+            pl.col("Tarjeta_Cuenta"),
+            pl.col("Cedula").alias("Num_Doc_Identificacion"),
+            pl.col("NumCel").alias("NumCelular"),
+            pl.col("IdUsuario"),
+            pl.col("ConfId"),
+            pl.col("TransactionId"),
+            pl.col("Mensaje"),
+            pl.col("Carrier"),
+            pl.col("Date_parsed").alias("Fecha_Hora_YP"),
+            pl.col("ApplicationStatus"),
+            pl.col("PlantformStatus"),
+            pl.col("ShortCode"),
+            pl.col("DescriptionStatus"),
+            pl.col("seconds_diff"),
+        ]
+    )
 
     return result
 
@@ -192,27 +203,37 @@ def generate_global_report(
         report = pl.concat([already_matched, matched_wild], how="diagonal_relaxed")
 
     # Rellenar los que siguen sin match
-    report = report.with_columns([
-        pl.col("estado_proveedor").fill_null("No Entregado"),
-        pl.col("estado_operadora").fill_null("No Entregado"),
-    ])
+    report = report.with_columns(
+        [
+            pl.col("estado_proveedor").fill_null("No Entregado"),
+            pl.col("estado_operadora").fill_null("No Entregado"),
+        ]
+    )
 
     # Agregar columnas de volumen (cada registro = 1 SMS)
-    report = report.with_columns([
-        pl.lit(1).alias("Volumen"),
-        pl.col("estado_proveedor")
-        .map_elements(lambda x: 100.0 if x == "Entregado" else 0.0, return_dtype=pl.Float64)
-        .alias("Porc_Exito"),
-        pl.col("estado_proveedor")
-        .map_elements(lambda x: 0.0 if x == "Entregado" else 100.0, return_dtype=pl.Float64)
-        .alias("Porc_Rechazo"),
-    ])
+    report = report.with_columns(
+        [
+            pl.lit(1).alias("Volumen"),
+            pl.col("estado_proveedor")
+            .map_elements(
+                lambda x: 100.0 if x == "Entregado" else 0.0, return_dtype=pl.Float64
+            )
+            .alias("Porc_Exito"),
+            pl.col("estado_proveedor")
+            .map_elements(
+                lambda x: 0.0 if x == "Entregado" else 100.0, return_dtype=pl.Float64
+            )
+            .alias("Porc_Rechazo"),
+        ]
+    )
 
     # Renombrar campos de estado
-    report = report.rename({
-        "estado_proveedor": "Estado_Proveedor",
-        "estado_operadora": "Estado_Operadora",
-    })
+    report = report.rename(
+        {
+            "estado_proveedor": "Estado_Proveedor",
+            "estado_operadora": "Estado_Operadora",
+        }
+    )
 
     log.info("Reporte global generado: %s registros", report.height)
     write_parquet(report, base_path, "reporte", date_str, mode="overwrite")
