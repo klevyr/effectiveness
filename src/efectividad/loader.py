@@ -159,16 +159,16 @@ def load_vendor(
         DataFrame del vendor transformado.
     """
     vdir = Path(vendor_dir)
-    zip_files = sorted(vdir.glob(f"*{date_str}*.zip"))
+    csv_files = sorted(vdir.glob(f"*{date_str}*.csv"))
 
-    if not zip_files:
+    if not csv_files:
         log.warning(
-            "No se encontraron archivos ZIP para fecha %s en %s", date_str, vdir
+            "No se encontraron archivos CSV para fecha %s en %s", date_str, vdir
         )
         return pl.DataFrame()
 
     frames: list[pl.DataFrame] = []
-    for zf in zip_files:
+    for zf in csv_files:
         log.info("Leyendo vendor: %s", zf.name)
         read_kwargs: dict = {
             "schema_overrides": {"Date": pl.Utf8},

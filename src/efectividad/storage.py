@@ -91,12 +91,12 @@ def read_parquet(
         if not target_file.exists():
             log.warning("Archivo no encontrado: %s", target_file)
             return pl.DataFrame()
-        return pl.read_parquet(target_file, engine="pyarrow")
+        return pl.read_parquet(target_file)
 
     files = sorted(target_dir.glob("*.parquet"))
     if not files:
         return pl.DataFrame()
-    return pl.read_parquet(files, engine="pyarrow")
+    return pl.read_parquet(files)
 
 
 def list_dates(base_path: Path, table: str) -> list[str]:
