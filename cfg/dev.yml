@@ -71,7 +71,7 @@ vendor_columns:
   - TransactionId
   - ApplicationStatus
   - ResponseCode
-  - PlantformStatus
+  - PlatformStatus
   - DescriptionStatus
 
 # Checks de validación por defecto

@@ -137,7 +137,7 @@ def _do_join(
             pl.col("Carrier"),
             pl.col("Date_parsed").alias("Fecha_Hora_YP"),
             pl.col("ApplicationStatus"),
-            pl.col("PlantformStatus"),
+            pl.col("PlatformStatus"),
             pl.col("ShortCode"),
             pl.col("DescriptionStatus"),
             pl.col("seconds_diff"),
@@ -184,7 +184,7 @@ def generate_global_report(
     # Join con match exacto
     report = consol.join(
         exact_match,
-        left_on=["ApplicationStatus", "PlantformStatus"],
+        left_on=["ApplicationStatus", "PlatformStatus"],
         right_on=["application_status", "platform_status"],
         how="left",
     )

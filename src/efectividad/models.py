@@ -1,8 +1,8 @@
 """Definiciones de schema / dataclasses para el dominio SMS efectividad."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
 
 # ---------------------------------------------------------------------------
 # Columnas derivadas (agregadas durante el pipeline, no vienen del archivo)
@@ -28,7 +28,7 @@ CONSOLIDATED_COLUMNS: list[str] = [
     "Carrier",
     "Fecha_Hora_YP",
     "ApplicationStatus",
-    "PlantformStatus",
+    "PlatformStatus",
     "ShortCode",
     "DescriptionStatus",
     "seconds_diff",
@@ -48,7 +48,7 @@ REPORT_COLUMNS: list[str] = [
     "TransactionId",
     "Operadora",
     "ApplicationStatus",
-    "PlantformStatus",
+    "PlatformStatus",
     "Desc_Campania",
     "Desc_AreaCampania",
     "Tipo_Campania",
@@ -67,6 +67,7 @@ REPORT_COLUMNS: list[str] = [
 # ---------------------------------------------------------------------------
 # Definición de un resultado de validación
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ValidationResult:

@@ -27,7 +27,14 @@ from efectividad.validator import check_effectiveness
 
 app = typer.Typer(
     name="efectividad",
-    help="Generador de reportes de efectividad SMS.",
+    help="""
+▄▖▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n
+▄▖▐▘    ▗ ▘  ▘ ▌   ▌
+▙▖▜▘█▌▛▘▜▘▌▌▌▌▛▌▀▌▛▌
+▙▖▐ ▙▖▙▖▐▖▌▚▘▌▙▌█▌▙▌
+
+Generador de reportes de efectividad SMS.
+""",
     add_completion=False,
 )
 log = setup_logger()
@@ -126,11 +133,23 @@ def process(
 
         # 2. Cargar gestor
         log.info("2/6 Cargando datos del gestor...")
-        load_gestor(transfer_dir, base_path, date_str, gestor_columns=gestor_columns, skip_transfers=skip_transfers)
+        load_gestor(
+            transfer_dir,
+            base_path,
+            date_str,
+            gestor_columns=gestor_columns,
+            skip_transfers=skip_transfers,
+        )
 
         # 3. Cargar vendor
         log.info("3/6 Cargando datos del vendor...")
-        load_vendor(vendor_dir, base_path, date_str, vendor_columns=vendor_columns, skip_vendor=skip_vendor)
+        load_vendor(
+            vendor_dir,
+            base_path,
+            date_str,
+            vendor_columns=vendor_columns,
+            skip_vendor=skip_vendor,
+        )
 
         # 4. Generar efectividad
         log.info("4/6 Generando consolidado de efectividad...")
