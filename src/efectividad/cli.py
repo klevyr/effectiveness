@@ -153,11 +153,11 @@ def process(
 
         # 4. Generar efectividad
         log.info("4/6 Generando consolidado de efectividad...")
-        generate_effectiveness(base_path, date_str)
+        consol = generate_effectiveness(base_path, date_str)
 
         # 5. Generar reporte global
         log.info("5/6 Generando reporte global...")
-        generate_global_report(base_path, date_str, statuses)
+        global_report = generate_global_report(consol, base_path, date_str, statuses)
 
         # Validación
         log.info("Validando resultados...")

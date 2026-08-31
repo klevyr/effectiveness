@@ -76,7 +76,7 @@ def generate_effectiveness(
 
     result = pl.concat(frames, how="diagonal_relaxed")
     log.info("Consolidado generado: %s registros", result.height)
-    write_parquet(result, base_path, "consolidado", date_str, mode="overwrite")
+    # write_parquet(result, base_path, "consolidado", date_str, mode="overwrite")
     return result
 
 
@@ -148,6 +148,7 @@ def _do_join(
 
 
 def generate_global_report(
+    consol: pl.DataFrame,
     base_path: Path,
     date_str: str,
     statuses: list[dict],
@@ -168,10 +169,6 @@ def generate_global_report(
     pl.DataFrame
         Reporte global con estados asignados.
     """
-    consol = read_parquet(base_path, "consolidado", date_str)
-    if consol.is_empty():
-        log.warning("No hay consolidado para generar reporte: %s", date_str)
-        return pl.DataFrame()
 
     # Construir DataFrame de estados
     status_df = pl.DataFrame(statuses)
@@ -205,8 +202,8 @@ def generate_global_report(
     # Rellenar los que siguen sin match
     report = report.with_columns(
         [
-            pl.col("estado_proveedor").fill_null("No Entregado"),
-            pl.col("estado_operadora").fill_null("No Entregado"),
+            pl.col("estado_proveedor").fill_null("RECHAZADO"),
+            pl.col("estado_operadora").fill_null("RECHAZADO"),
         ]
     )
 
@@ -216,12 +213,12 @@ def generate_global_report(
             pl.lit(1).alias("Volumen"),
             pl.col("estado_proveedor")
             .map_elements(
-                lambda x: 100.0 if x == "Entregado" else 0.0, return_dtype=pl.Float64
+                lambda x: 100.0 if x == "EXITOSO" else 0.0, return_dtype=pl.Float64
             )
             .alias("Porc_Exito"),
             pl.col("estado_proveedor")
             .map_elements(
-                lambda x: 0.0 if x == "Entregado" else 100.0, return_dtype=pl.Float64
+                lambda x: 0.0 if x == "EXITOSO" else 100.0, return_dtype=pl.Float64
             )
             .alias("Porc_Rechazo"),
         ]
@@ -238,3 +235,4 @@ def generate_global_report(
     log.info("Reporte global generado: %s registros", report.height)
     write_parquet(report, base_path, "reporte", date_str, mode="overwrite")
     return report
+

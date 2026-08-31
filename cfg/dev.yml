@@ -12,23 +12,23 @@ paths:
 statuses:
   - application_status: SUBMITD
     platform_status: DELIVRD
-    estado_proveedor: "Entregado"
-    estado_operadora: "Entregado"
+    estado_proveedor: "EXITOSO"
+    estado_operadora: "EXITOSO"
 
   - application_status: SUBMITD
     platform_status: UNDELIV
-    estado_proveedor: "Entregado"
-    estado_operadora: "No Entregado"
+    estado_proveedor: "EXITOSO"
+    estado_operadora: "RECHAZADO"
 
   - application_status: UNDELIV
     platform_status: UNDELIV
-    estado_proveedor: "No Entregado"
-    estado_operadora: "No Entregado"
+    estado_proveedor: "RECHAZADO"
+    estado_operadora: "RECHAZADO"
 
   - application_status: "*"
     platform_status: "--"
-    estado_proveedor: "No Entregado"
-    estado_operadora: "No Entregado"
+    estado_proveedor: "RECHAZADO"
+    estado_operadora: "RECHAZADO"
 
 # Credenciales (valores placeholder - los reales se leen de ENV)
 # SFTP_HOST, SFTP_PORT, SFTP_UID, SFTP_PWD
@@ -95,3 +95,29 @@ validation_threshold:
   pass: 0.99
   warning: 0.95
 
+# configuracion reporte salida
+report_columns:
+  - Fecha
+  - Entidad
+  - Marca
+  - Hora
+  - IdCodigo
+  - Tarjeta_Cuenta
+  - Cedula
+  - NumCel
+  - Mensaje
+  - ConfId
+  - IdUsuario
+  - MobileNumber
+  - ShortCode
+  - Message
+  - Priority
+  - TotalFragments
+  - Type
+  - Carrier
+  - Date
+  - TransactionId
+  - ApplicationStatus
+  - ResponseCode
+  - PlatformStatus
+  - DescriptionStatus
