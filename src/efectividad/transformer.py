@@ -10,8 +10,9 @@ from pathlib import Path
 
 import polars as pl
 
+from efectividad.loader import load_stats
 from efectividad.logger import setup_logger
-from efectividad.storage import read_parquet, write_parquet
+from efectividad.storage import read_parquet, write_parquet, write_partitioned_parquet
 
 log = setup_logger()
 
@@ -19,7 +20,7 @@ log = setup_logger()
 def generate_effectiveness(
     base_path: Path,
     date_str: str,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Cruza gestor con vendor para generar el consolidado de efectividad.
 
     Realiza dos joins:
@@ -36,24 +37,24 @@ def generate_effectiveness(
 
     Returns
     -------
-    pl.DataFrame
+    pl.LazyFrame
         Consolidado de efectividad.
     """
     ges = read_parquet(base_path, "gestor", date_str)
     vend = read_parquet(base_path, "vendor", date_str)
 
-    if ges.is_empty():
+    if ges.collect().is_empty():
         log.error("No hay datos de gestor para %s", date_str)
-        return pl.DataFrame()
-    if vend.is_empty():
+        return pl.LazyFrame()
+    if vend.collect().is_empty():
         log.error("No hay datos de vendor para %s", date_str)
-        return pl.DataFrame()
+        return pl.LazyFrame()
 
     log.info(
         "Generando efectividad para %s (gestor=%d, vendor=%d)",
         date_str,
-        ges.height,
-        vend.height,
+        ges.select(pl.len()).collect().item(),
+        vend.select(pl.len()).collect().item(),
     )
 
     # Preparar campos de join
@@ -69,24 +70,24 @@ def generate_effectiveness(
     join_pin = _do_join(ges_pin, vend, ts_min=-10, ts_max=600, cross_type="pin")
 
     # Consolidar
-    frames = [df for df in [join_std, join_pin] if not df.is_empty()]
+    frames = [lf for lf in [join_std, join_pin] if not lf.collect().is_empty()]
     if not frames:
         log.warning("No se generaron cruces para %s", date_str)
-        return pl.DataFrame()
+        return pl.LazyFrame()
 
     result = pl.concat(frames, how="diagonal_relaxed")
-    log.info("Consolidado generado: %s registros", result.height)
+    log.info("Consolidado generado: %s registros", result.select(pl.len()).collect().item())
     # write_parquet(result, base_path, "consolidado", date_str, mode="overwrite")
     return result
 
 
 def _do_join(
-    ges: pl.DataFrame,
-    vend: pl.DataFrame,
+    ges: pl.LazyFrame,
+    vend: pl.LazyFrame,
     ts_min: int,
     ts_max: int,
     cross_type: str = "standard",
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Realiza el LEFT JOIN entre gestor y vendor con filtro de timestamp.
 
     Parameters
@@ -94,8 +95,8 @@ def _do_join(
     ts_min, ts_max : int
         Rango permitido de diferencia de segundos entre gestor y vendor.
     """
-    if ges.is_empty():
-        return pl.DataFrame()
+    if ges.collect().is_empty():
+        return pl.LazyFrame()
 
     _on_join = ["NumCelular", "MessageMD5"]
     if cross_type != "standard":
@@ -148,11 +149,11 @@ def _do_join(
 
 
 def generate_global_report(
-    consol: pl.DataFrame,
+    consol: pl.LazyFrame,
     base_path: Path,
     date_str: str,
     statuses: list[dict],
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Genera el reporte global cruzando consolidado con definiciones de estado.
 
     Parameters
@@ -166,46 +167,18 @@ def generate_global_report(
 
     Returns
     -------
-    pl.DataFrame
+    pl.LazyFrame
         Reporte global con estados asignados.
     """
 
     # Construir DataFrame de estados
-    status_df = pl.DataFrame(statuses)
+    status_lf = pl.DataFrame(statuses).lazy()
 
-    # Mapear ApplicationStatus → Estado_Proveedor / Estado_Operadora
-    # Regla: match exacto primero, luego wildcard "*"
-    exact_match = status_df.filter(pl.col("application_status") != "*")
-    wildcard_match = status_df.filter(pl.col("application_status") == "*")
+    log.info("Generando estadisticas: %s", base_path)
+    generate_stats_report(consol, base_path, date_str, status_lf)
 
-    # Join con match exacto
-    report = consol.join(
-        exact_match,
-        left_on=["ApplicationStatus", "PlatformStatus"],
-        right_on=["application_status", "platform_status"],
-        how="left",
-    )
-
-    # Para los que no matchearon, intentar con wildcard
-    unmatched = report.filter(pl.col("estado_proveedor").is_null())
-    if not unmatched.is_empty():
-        matched_wild = unmatched.drop(["estado_proveedor", "estado_operadora"]).join(
-            wildcard_match,
-            left_on=["ApplicationStatus"],
-            right_on=["application_status"],
-            how="left",
-        )
-        # Combinar
-        already_matched = report.filter(pl.col("estado_proveedor").is_not_null())
-        report = pl.concat([already_matched, matched_wild], how="diagonal_relaxed")
-
-    # Rellenar los que siguen sin match
-    report = report.with_columns(
-        [
-            pl.col("estado_proveedor").fill_null("RECHAZADO"),
-            pl.col("estado_operadora").fill_null("RECHAZADO"),
-        ]
-    )
+    report = _match_statuses(consol, status_lf, date_str)
+    stats = load_stats(base_path, date_str)
 
     # Agregar columnas de volumen (cada registro = 1 SMS)
     report = report.with_columns(
@@ -232,7 +205,100 @@ def generate_global_report(
         }
     )
 
-    log.info("Reporte global generado: %s registros", report.height)
+    log.info("Reporte global generado: %s registros", report.select(pl.len()).collect().item())
     write_parquet(report, base_path, "reporte", date_str, mode="overwrite")
     return report
 
+
+
+def generate_stats_report(
+    consol: pl.LazyFrame,
+    base_path: Path,
+    date_str: str,
+    status_df: pl.LazyFrame,
+) -> pl.LazyFrame:
+    """Genera el reporte global cruzando consolidado con definiciones de estado.
+
+    Parameters
+    ----------
+    base_path : Path
+        Directorio raíz de datos Parquet.
+    date_str : str
+        Fecha en formato ``YYYYMMDD``.
+    statuses : list[dict]
+        Lista de definiciones de estado del YAML.
+
+    Returns
+    -------
+    pl.LazyFrame
+        Reporte global con estados asignados.
+    """
+    # Construir DataFrame de estados
+    report = _match_statuses(consol, status_df, date_str)
+
+    stats = report.group_by(["Fecha","NumCelular","Estado_Operadora"]).agg(
+        [
+            pl.len().alias("Envios")
+        ]
+    )
+    stats = stats.with_columns(
+        [
+            pl.col("Fecha").str.slice(0,6).alias("MesID"),
+            pl.col("Fecha").str.slice(6,8).alias("DiaID")
+        ]
+    )
+    
+    log.info("Reporte estadisticas generado. %s", base_path)
+    write_partitioned_parquet(stats, base_path, "stats", part_fields=["MesID","DiaID"])
+    return report
+
+
+def _match_statuses(
+    consol: pl.LazyFrame,
+    status_df: pl.LazyFrame,
+    date_str: str,
+):
+    # Mapear ApplicationStatus → Estado_Proveedor / Estado_Operadora
+    # Regla: match exacto primero, luego wildcard "*"
+    exact_match = status_df.filter(pl.col("application_status") != "*")
+    wildcard_match = status_df.filter(pl.col("application_status") == "*")
+
+    # Join con match exacto
+    report = consol.join(
+        exact_match,
+        left_on=["ApplicationStatus", "PlatformStatus"],
+        right_on=["application_status", "platform_status"],
+        how="left",
+    )
+
+    # Para los que no matchearon, intentar con wildcard
+    unmatched = report.filter(pl.col("estado_proveedor").is_null())
+    if not unmatched.collect().is_empty():
+        log.error("Se ha identificado estatus sin matchear en la fecha %s", date_str)
+        matched_wild = unmatched.drop(["estado_proveedor", "estado_operadora"]).join(
+            wildcard_match,
+            left_on=["ApplicationStatus"],
+            right_on=["application_status"],
+            how="left",
+        )
+        # Combinar
+        already_matched = report.filter(pl.col("estado_proveedor").is_not_null())
+        report = pl.concat([already_matched, matched_wild], how="diagonal_relaxed")
+
+    # Rellenar los que siguen sin match
+    report = report.with_columns(
+        [
+            pl.col("estado_proveedor").fill_null("RECHAZADO"),
+            pl.col("estado_operadora").fill_null("RECHAZADO"),
+        ]
+    )
+
+    # Renombrar campos de estado
+    report = report.rename(
+        {
+            "estado_proveedor": "Estado_Proveedor",
+            "estado_operadora": "Estado_Operadora",
+        }
+    )
+
+    return report

@@ -26,7 +26,7 @@ def _table_dir(base: Path, table: str) -> Path:
 
 
 def write_parquet(
-    df: pl.DataFrame,
+    lf: pl.LazyFrame,
     base_path: Path,
     table: str,
     date_str: str,
@@ -36,7 +36,7 @@ def write_parquet(
 
     Parameters
     ----------
-    df : pl.DataFrame
+    df : pl.LazyFrame
         Datos a almacenar.
     base_path : Path
         Directorio raíz de datos.
@@ -57,10 +57,43 @@ def write_parquet(
 
     if mode == "append" and target_file.exists():
         existing = read_parquet(base_path, table, date_str)
-        df = pl.concat([existing, df])
+        lf = pl.concat([existing, lf])
+    #lf.sink_parquet(target_file)
+    log.info("Escrito en %s", target_file)
+    return target_file
 
-    df.write_parquet(target_file)
-    log.info("Escrito %s registros en %s", df.height, target_file)
+
+def write_partitioned_parquet(
+    lf: pl.LazyFrame,
+    base_path: Path,
+    table: str,
+    part_fields: list[str]
+) -> Path:
+    """Escribe un DataFrame como Parquet particionado por fecha.
+
+    Parameters
+    ----------
+    df : pl.LazyFrame
+        Datos a almacenar.
+    base_path : Path
+        Directorio raíz de datos.
+    table : str
+        Nombre de la tabla (subdirectorio).
+    part_fields : list[str]
+        Lista de campos por los cuales particionar.
+
+    Returns
+    -------
+    Path
+        Ruta del archivo Parquet escrito.
+    """
+    target_file = _table_dir(base_path, table)
+
+    lf.sink_parquet(
+        pl.PartitionBy(target_file, key=part_fields),
+        mkdir=True,
+    )
+    log.info("Escrito en %s", target_file)
     return target_file
 
 
@@ -68,7 +101,7 @@ def read_parquet(
     base_path: Path,
     table: str,
     date_str: str | None = None,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Lee datos Parquet de una tabla, opcionalmente filtrando por fecha.
 
     Parameters
@@ -82,7 +115,7 @@ def read_parquet(
 
     Returns
     -------
-    pl.DataFrame
+    pl.LazyFrame
     """
     target_dir = _table_dir(base_path, table)
 
@@ -90,13 +123,13 @@ def read_parquet(
         target_file = target_dir / f"{date_str}.parquet"
         if not target_file.exists():
             log.warning("Archivo no encontrado: %s", target_file)
-            return pl.DataFrame()
-        return pl.read_parquet(target_file)
+            return pl.LazyFrame()
+        return pl.read_parquet(target_file).lazy()
 
     files = sorted(target_dir.glob("*.parquet"))
     if not files:
-        return pl.DataFrame()
-    return pl.read_parquet(files)
+        return pl.LazyFrame()
+    return pl.scan_parquet(files)
 
 
 def list_dates(base_path: Path, table: str) -> list[str]:

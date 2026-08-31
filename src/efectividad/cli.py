@@ -28,10 +28,11 @@ from efectividad.validator import check_effectiveness
 app = typer.Typer(
     name="efectividad",
     help="""
-▄▖▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n
 ▄▖▐▘    ▗ ▘  ▘ ▌   ▌
 ▙▖▜▘█▌▛▘▜▘▌▌▌▌▛▌▀▌▛▌
 ▙▖▐ ▙▖▙▖▐▖▌▚▘▌▙▌█▌▙▌
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n
 
 Generador de reportes de efectividad SMS.
 """,
@@ -129,7 +130,7 @@ def process(
             log.info("2/6 Descargando archivos proveedor...")
             # _run_transfers(cfg, transfer_dir, date_str)
         else:
-            log.info("2/6 Archivos omitidos (--skip-vendor)")
+            log.info("2/6 Archivos proveedor omitidos (--skip-vendor)")
 
         # 2. Cargar gestor
         log.info("2/6 Cargando datos del gestor...")
@@ -138,7 +139,6 @@ def process(
             base_path,
             date_str,
             gestor_columns=gestor_columns,
-            skip_transfers=skip_transfers,
         )
 
         # 3. Cargar vendor
@@ -148,7 +148,6 @@ def process(
             base_path,
             date_str,
             vendor_columns=vendor_columns,
-            skip_vendor=skip_vendor,
         )
 
         # 4. Generar efectividad
@@ -312,7 +311,7 @@ def status(
     log.info("Fechas disponibles en '%s':", tabla)
     for d in dates:
         df = read_parquet(base_path, tabla, d)
-        log.info("  %s → %d registros", d, df.height)
+        log.info("  %s → %d registros", d, df.select(pl.len()).collect().item())
 
 
 # ---------------------------------------------------------------------------

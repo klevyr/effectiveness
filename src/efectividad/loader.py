@@ -6,7 +6,7 @@ Transforma y almacena los datos en Parquet vía la capa de storage.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import polars as pl
@@ -39,8 +39,7 @@ def load_gestor(
     base_path: Path,
     date_str: str,
     gestor_columns: list[str] | None = None,
-    skip_transfers: bool = False,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Lee archivos broadcast.csv y megareport.csv, transforma y almacena.
 
     Parameters
@@ -58,17 +57,17 @@ def load_gestor(
 
     Returns
     -------
-    pl.DataFrame
-        DataFrame del gestor transformado.
+    pl.LazyFrame
+        LazyFrame del gestor transformado.
     """
     if not gestor_columns:
         log.error("No se definieron columnas del gestor en la configuración")
-        return pl.DataFrame()
+        return pl.LazyFrame()
 
-    gestor_schema: dict[str, pl.DataType] = {col: pl.Utf8 for col in gestor_columns}
+    gestor_schema = dict.fromkeys(gestor_columns, pl.Utf8)
 
     tdir = Path(transfer_dir)
-    frames: list[pl.DataFrame] = []
+    frames: list[pl.LazyFrame] = []
 
     for csv_name, tipo in [("broadcast.csv", "B"), ("megareport.csv", "M")]:
         csv_path = tdir / csv_name
@@ -76,12 +75,12 @@ def load_gestor(
             log.warning("Archivo gestor no encontrado, omitiendo: %s", csv_path)
             continue
         log.info("Leyendo gestor: %s", csv_path)
-        df = pl.read_csv(
+        df = pl.scan_csv(
             csv_path,
             has_header=False,
             new_columns=gestor_columns,
             schema_overrides=gestor_schema,
-            encoding="iso-8859-1",
+            encoding="utf8-lossy",
             null_values=[""],
         )
         df = df.with_columns(pl.lit(tipo).alias("TipoCola"))
@@ -89,7 +88,7 @@ def load_gestor(
 
     if not frames:
         log.error("No se encontraron archivos de gestor en %s", tdir)
-        return pl.DataFrame()
+        return pl.LazyFrame()
 
     result = pl.concat(frames, how="diagonal_relaxed")
 
@@ -123,7 +122,7 @@ def load_gestor(
         .alias("MessageMD5")
     )
 
-    log.info("Gestor cargado: %s registros", result.height)
+    log.info("Gestor cargado: %s registros", result.select(pl.len()).collect().item())
     write_parquet(result, base_path, "gestor", date_str, mode="overwrite")
     return result
 
@@ -138,8 +137,7 @@ def load_vendor(
     base_path: Path,
     date_str: str,
     vendor_columns: list[str] | None = None,
-    skip_vendor: bool = False,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """Lee archivos ZIP CSV del vendor, transforma y almacena.
 
     Parameters
@@ -155,8 +153,8 @@ def load_vendor(
 
     Returns
     -------
-    pl.DataFrame
-        DataFrame del vendor transformado.
+    pl.LazyFrame
+        LazyFrame del vendor transformado.
     """
     vdir = Path(vendor_dir)
     csv_files = sorted(vdir.glob(f"*{date_str}*.csv"))
@@ -165,14 +163,13 @@ def load_vendor(
         log.warning(
             "No se encontraron archivos CSV para fecha %s en %s", date_str, vdir
         )
-        return pl.DataFrame()
+        return pl.LazyFrame()
 
-    frames: list[pl.DataFrame] = []
+    frames: list[pl.LazyFrame] = []
     for zf in csv_files:
         log.info("Leyendo vendor: %s", zf.name)
         read_kwargs: dict = {
             "schema_overrides": {"Date": pl.Utf8},
-            "encoding": "iso-8859-1",
             "null_values": [""],
         }
         if vendor_columns:
@@ -180,8 +177,11 @@ def load_vendor(
             read_kwargs["has_header"] = False
         else:
             read_kwargs["infer_schema"] = True
-        df = pl.read_csv(zf, **read_kwargs)
-        frames.append(df)
+        lf = pl.scan_csv(zf, 
+                         encoding="utf8-lossy",
+                         **read_kwargs
+                         )
+        frames.append(lf)
 
     result = pl.concat(frames, how="diagonal_relaxed")
 
@@ -203,9 +203,9 @@ def load_vendor(
     # Registros válidos (con fecha parseable)
     valid = result.filter(pl.col("Date_parsed").is_not_null())
 
-    if valid.is_empty():
+    if valid.collect().is_empty():
         log.warning("Todos los registros del vendor tienen fecha inválida")
-        return pl.DataFrame()
+        return pl.LazyFrame()
 
     # Limpiar mensaje: reemplazar triples comillas
     valid = valid.with_columns(
@@ -242,6 +242,42 @@ def load_vendor(
         .alias("MessageMD5")
     )
 
-    log.info("Vendor cargado: %s registros válidos", valid.height)
+    log.info("Vendor cargado: %s registros válidos", valid.select(pl.len()).collect().item())
     write_parquet(valid, base_path, "vendor", date_str, mode="overwrite")
     return valid
+
+
+def load_stats(
+    base_path: Path,
+    date_str: str,
+) -> pl.LazyFrame:
+    """Carga reporte de estadisticas desde Parquet.
+
+    Parameters
+    ----------
+    base_path : Path
+        Directorio raíz de datos Parquet.
+    date_str : str
+        Fecha en formato ``YYYYMMDD``.
+
+    Returns
+    -------
+    pl.LazyFrame
+        Reporte de estadisticas.
+    """
+    stats_path = Path(base_path) / "stats"
+    if not stats_path.exists():
+        log.warning("Reporte de estadisticas no encontrado: %s", stats_path)
+        return pl.LazyFrame()
+    log.info("Cargando reporte de estadisticas: %s", stats_path)
+    # obtener fecha 30 dias antes de date_str y filtrar por rango de fechas
+    start_date = (datetime.strptime(date_str, "%Y%m%d") - timedelta(days=30)).strftime("%Y%m%d")
+    end_date = date_str
+
+    lf = (
+        pl.scan_parquet(stats_path)
+        .filter((pl.col("Fecha") >= start_date) & (pl.col("Fecha") <= end_date))
+        .lazy()
+    )
+    # todo resumen exitososo y rechazados
+    return lf
