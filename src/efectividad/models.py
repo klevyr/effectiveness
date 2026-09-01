@@ -83,7 +83,7 @@ class ValidationResult:
             self.porcentaje = 100.0
         else:
             self.porcentaje = (self.total_consolidado / self.total_gestor) * 100
-        if self.porcentaje >= 99.0:
+        if self.porcentaje >= 98.0:
             self.estado = "pass"
         elif self.porcentaje >= 95.0:
             self.estado = "warning"

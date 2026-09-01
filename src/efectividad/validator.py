@@ -50,7 +50,7 @@ def check_effectiveness(
         }
 
     ges = read_parquet(base_path, "gestor", date_str)
-    consol = read_parquet(base_path, "consolidado", date_str)
+    consol = read_parquet(base_path, "reporte", date_str)
 
     results: list[ValidationResult] = []
 
@@ -58,11 +58,11 @@ def check_effectiveness(
         total_ges = 0
         total_consol = 0
 
-        if not ges.is_empty():
-            total_ges = ges.filter(pl.col("IdCodigo") == codigo).height
+        if not ges.collect().is_empty():
+            total_ges = ges.filter(pl.col("IdCodigo") == codigo).select(pl.len()).collect().item()
 
-        if not consol.is_empty():
-            total_consol = consol.filter(pl.col("CdMensaje") == codigo).height
+        if not consol.collect().is_empty():
+            total_consol = consol.filter(pl.col("CdMensaje") == codigo).select(pl.len()).collect().item()
 
         vr = ValidationResult(
             codigo=codigo,
@@ -79,7 +79,7 @@ def check_effectiveness(
 
 def _print_validation(results: list[ValidationResult]) -> None:
     """Imprime la tabla de validación en consola."""
-    log.info("*** VALIDACIONES *********************** GESTOR/EFECTIVIDAD ********* %% * ESTADO")
+    log.info("== VALIDACIONES ============================ GESTOR/EFECTIVIDAD ===== %% ESTADO")
     for r in results:
         indicator = {
             "pass": "pass",
