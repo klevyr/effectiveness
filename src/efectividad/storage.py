@@ -58,7 +58,8 @@ def write_parquet(
     if mode == "append" and target_file.exists():
         existing = read_parquet(base_path, table, date_str)
         lf = pl.concat([existing, lf])
-    #lf.sink_parquet(target_file)
+    # export parquet
+    lf.sink_parquet(target_file)
     log.info("Escrito en %s", target_file)
     return target_file
 

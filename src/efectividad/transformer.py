@@ -173,41 +173,31 @@ def generate_global_report(
 
     # Construir DataFrame de estados
     status_lf = pl.DataFrame(statuses).lazy()
+    unique_categories = status_lf.select(
+        pl.col("estado_operadora")
+        ).collect().to_series().unique().to_list()
+
 
     log.info("Generando estadisticas: %s", base_path)
     generate_stats_report(consol, base_path, date_str, status_lf)
 
+    log.info("Generando reporte global: %s", base_path)
     report = _match_statuses(consol, status_lf, date_str)
-    stats = load_stats(base_path, date_str)
+    stats = load_stats(base_path, date_str, status_lf)
 
-    # Agregar columnas de volumen (cada registro = 1 SMS)
-    report = report.with_columns(
-        [
-            pl.lit(1).alias("Volumen"),
-            pl.col("estado_proveedor")
-            .map_elements(
-                lambda x: 100.0 if x == "EXITOSO" else 0.0, return_dtype=pl.Float64
-            )
-            .alias("Porc_Exito"),
-            pl.col("estado_proveedor")
-            .map_elements(
-                lambda x: 0.0 if x == "EXITOSO" else 100.0, return_dtype=pl.Float64
-            )
-            .alias("Porc_Rechazo"),
-        ]
+    global_report = report.join(
+        other=stats,
+        on="NumCelular",
+        how="left",
+    ).with_columns(
+        (pl.col(f"Vol_{cat.title()}") / pl.col("Volumen") * 100)
+        .alias(f"Porc_{cat.title()}")
+        for cat in unique_categories
     )
 
-    # Renombrar campos de estado
-    report = report.rename(
-        {
-            "estado_proveedor": "Estado_Proveedor",
-            "estado_operadora": "Estado_Operadora",
-        }
-    )
-
-    log.info("Reporte global generado: %s registros", report.select(pl.len()).collect().item())
-    write_parquet(report, base_path, "reporte", date_str, mode="overwrite")
-    return report
+    log.info("Reporte global generado: %s registros", global_report.select(pl.len()).collect().item())
+    write_parquet(global_report, base_path, "reporte", date_str, mode="overwrite")
+    return global_report
 
 
 
@@ -215,18 +205,20 @@ def generate_stats_report(
     consol: pl.LazyFrame,
     base_path: Path,
     date_str: str,
-    status_df: pl.LazyFrame,
+    status_lf: pl.LazyFrame,
 ) -> pl.LazyFrame:
     """Genera el reporte global cruzando consolidado con definiciones de estado.
 
     Parameters
     ----------
+    consol : pl.LazyFrame
+        Consolidado de efectividad.
     base_path : Path
         Directorio raíz de datos Parquet.
     date_str : str
         Fecha en formato ``YYYYMMDD``.
-    statuses : list[dict]
-        Lista de definiciones de estado del YAML.
+    status_lf : pl.LazyFrame
+        LazyFrame de definiciones de estado.
 
     Returns
     -------
@@ -234,7 +226,7 @@ def generate_stats_report(
         Reporte global con estados asignados.
     """
     # Construir DataFrame de estados
-    report = _match_statuses(consol, status_df, date_str)
+    report = _match_statuses(consol, status_lf, date_str)
 
     stats = report.group_by(["Fecha","NumCelular","Estado_Operadora"]).agg(
         [
@@ -255,13 +247,30 @@ def generate_stats_report(
 
 def _match_statuses(
     consol: pl.LazyFrame,
-    status_df: pl.LazyFrame,
+    status_lf: pl.LazyFrame,
     date_str: str,
-):
+) -> pl.LazyFrame:
+    """Asigna estado de proveedor y operadora a cada registro del consolidado.
+    
+    Parameters
+    ----------
+    consol : pl.LazyFrame
+        Consolidado de efectividad.
+    status_lf : pl.LazyFrame
+        LazyFrame de definiciones de estado.
+    date_str : str
+        Fecha en formato ``YYYYMMDD``.
+
+    Returns
+    -------
+    pl.LazyFrame
+        Reporte global con estados asignados.
+    """
+
     # Mapear ApplicationStatus → Estado_Proveedor / Estado_Operadora
     # Regla: match exacto primero, luego wildcard "*"
-    exact_match = status_df.filter(pl.col("application_status") != "*")
-    wildcard_match = status_df.filter(pl.col("application_status") == "*")
+    exact_match = status_lf.filter(pl.col("application_status") != "*")
+    wildcard_match = status_lf.filter(pl.col("application_status") == "*")
 
     # Join con match exacto
     report = consol.join(

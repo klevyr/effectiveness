@@ -250,6 +250,7 @@ def load_vendor(
 def load_stats(
     base_path: Path,
     date_str: str,
+    status_lf: pl.LazyFrame,
 ) -> pl.LazyFrame:
     """Carga reporte de estadisticas desde Parquet.
 
@@ -259,12 +260,19 @@ def load_stats(
         Directorio raíz de datos Parquet.
     date_str : str
         Fecha en formato ``YYYYMMDD``.
+    status_lf : pl.LazyFrame
+        LazyFrame de definiciones de estado.
 
     Returns
     -------
     pl.LazyFrame
         Reporte de estadisticas.
     """
+
+    unique_categories = status_lf.select(
+        pl.col("estado_operadora")
+    ).collect().to_series().unique().to_list()
+
     stats_path = Path(base_path) / "stats"
     if not stats_path.exists():
         log.warning("Reporte de estadisticas no encontrado: %s", stats_path)
@@ -276,8 +284,19 @@ def load_stats(
 
     lf = (
         pl.scan_parquet(stats_path)
-        .filter((pl.col("Fecha") >= start_date) & (pl.col("Fecha") <= end_date))
-        .lazy()
+            .filter((pl.col("Fecha") >= start_date) & (pl.col("Fecha") <= end_date))
+            .group_by(["NumCelular"])
+            .agg(
+                [pl.col("Envios").
+                filter(
+                    pl.col("Estado_Operadora") == cat
+                ).sum().alias(cat) for cat in unique_categories] +
+                [pl.col("Envios").sum().alias("Volumen")]
+            )
+        )
+
+    stats = lf.rename(
+        {cat: f"Vol_{cat.title()}" for cat in unique_categories}
     )
-    # todo resumen exitososo y rechazados
-    return lf
+    
+    return stats
