@@ -47,7 +47,7 @@ def generate_reports(
     report_dir.mkdir(parents=True, exist_ok=True)
 
     report = read_parquet(base_path, "reporte", date_str)
-    if report.is_empty():
+    if report.collect().is_empty():
         log.warning("No hay datos de reporte para %s", date_str)
         return []
 

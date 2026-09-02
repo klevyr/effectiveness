@@ -82,12 +82,12 @@ def _print_validation(results: list[ValidationResult]) -> None:
     log.info("== VALIDACIONES ============================ GESTOR/EFECTIVIDAD ===== %% ESTADO")
     for r in results:
         indicator = {
-            "pass": "pass",
-            "warning": "warning",
-            "danger": "danger",
+            "pass": "🟢 pass",
+            "warning": "🟡 warning",
+            "danger": "🔴 danger",
         }[r.estado]
         log.info(
-            "Checking %-38s %6d / %-6d %7.3f%% %s",
+            "Checking %-38s %6d / %-6d %7.2f%% %s",
             r.descripcion,
             r.total_gestor,
             r.total_consolidado,

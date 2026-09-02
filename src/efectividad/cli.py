@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+import polars as pl
 
 import typer
 
@@ -97,7 +98,7 @@ def process(
         False, "--skip-transfers", "-st", help="Omitir descarga de transferencias AS400"
     ),
     skip_vendor: bool = typer.Option(
-        False, "--skip_vendor", "-sv", help="Omitir descarga de proveedores"
+        False, "--skip-vendor", "-sv", help="Omitir descarga de proveedores"
     ),
     env: str = typer.Option("dev", "--env", "-e", help="Entorno de configuración"),
 ) -> None:
@@ -120,20 +121,20 @@ def process(
 
         # 1. Transferencias AS400 (si aplica)
         if not skip_transfers:
-            log.info("1/6 Descargando transferencias AS400...")
+            log.info(">> 1/7 Descargando transferencias AS400...")
             _run_transfers(cfg, transfer_dir, date_str)
         else:
-            log.info("1/6 Transferencias omitidas (--skip-transfers)")
+            log.info(">> 1/7 Transferencias omitidas (--skip-transfers)")
 
         # 1.1 Desacrga archivos sftp (si aplica)
         if not skip_vendor:
-            log.info("2/6 Descargando archivos proveedor...")
-            _sftp_download(cfg, date_str, limite_dias=5, compress=False)
+            log.info(">> 2/7 Descargando archivos proveedor...")
+            _sftp_download(cfg, date_str, limite_dias=len(dates), compress=False)
         else:
-            log.info("2/6 Archivos proveedor omitidos (--skip-vendor)")
+            log.info(">> 2/7 Archivos proveedor omitidos (--skip-vendor)")
 
         # 2. Cargar gestor
-        log.info("2/6 Cargando datos del gestor...")
+        log.info(">> 3/7 Cargando datos del gestor...")
         load_gestor(
             transfer_dir,
             base_path,
@@ -142,7 +143,7 @@ def process(
         )
 
         # 3. Cargar vendor
-        log.info("3/6 Cargando datos del vendor...")
+        log.info(">> 4/7 Cargando datos del vendor...")
         load_vendor(
             vendor_dir,
             base_path,
@@ -151,15 +152,15 @@ def process(
         )
 
         # 4. Generar efectividad
-        log.info("4/6 Generando consolidado de efectividad...")
+        log.info(">> 5/7 Generando consolidado de efectividad...")
         consol = generate_effectiveness(base_path, date_str)
 
         # 5. Generar reporte global
-        log.info("5/6 Generando reporte global...")
+        log.info(">> 6/7 Generando reporte global...")
         generate_global_report(consol, base_path, date_str, statuses)
 
         # Validación
-        log.info("Validando resultados...")
+        log.info(">>> Validando resultados...")
         check_effectiveness(base_path, date_str, checks)
 
         log.info("===== COMPLETADO %s =====", date_str)
@@ -233,7 +234,7 @@ def download(
 
     for date_str in dates:
         log.info("Descargando archivos para %s...", date_str)
-        _sftp_download(cfg, date_str, limite_dias=18, compress=not skip_compress)
+        _sftp_download(cfg, date_str, limite_dias=len(dates), compress=not skip_compress)
 
 
 # ---------------------------------------------------------------------------
@@ -359,6 +360,4 @@ def _sftp_download(
 
     # Descargar el archivo requerido por date_str si existe, sino el más reciente
     selected = next((f for f in available if date_str in f), available[0])
-    log.info("Descargando archivo: %s", selected)
     sftp.download_file(selected, compress=compress)
-    log.info("Descarga completada")

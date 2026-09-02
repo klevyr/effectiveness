@@ -185,6 +185,7 @@ def generate_global_report(
     report = _match_statuses(consol, status_lf, date_str)
     stats = load_stats(base_path, date_str, status_lf)
 
+    # cruza informacion de efectividad con estadisticas de envio
     global_report = report.join(
         other=stats,
         on="NumCelular",
