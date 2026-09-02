@@ -199,7 +199,7 @@ class SFTPManager:
         finally:
             client.close()
 
-    def download_file(self, filename: str) -> Path:
+    def download_file(self, filename: str, compress:bool=True) -> Path:
         """Descarga un archivo y lo comprime como ZIP.
 
         Parameters
@@ -229,11 +229,17 @@ class SFTPManager:
             sftp.get(f"{self._remote_path}/{filename}", str(local_file))
             sftp.close()
 
-            zip_path = self._local_dir / f"{filename}.zip"
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.write(local_file, arcname=local_file.name)
-            local_file.unlink()
-            log.info("Descarga completada: %s", zip_path)
+            zip_path = ""
+            if compress:
+                zip_path = self._local_dir / f"{filename}.zip"
+                with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    zf.write(local_file, arcname=local_file.name)
+                local_file.unlink()
+                log.info("Descarga completada: %s", zip_path)
+            else:
+                zip_path = local_file
+                log.info("Descarga completada: %s", zip_path)
+
             return zip_path
         finally:
             client.close()

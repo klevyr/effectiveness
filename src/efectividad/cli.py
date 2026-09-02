@@ -128,7 +128,7 @@ def process(
         # 1.1 Desacrga archivos sftp (si aplica)
         if not skip_vendor:
             log.info("2/6 Descargando archivos proveedor...")
-            # _run_transfers(cfg, transfer_dir, date_str)
+            _sftp_download(cfg, date_str, limite_dias=5, compress=False)
         else:
             log.info("2/6 Archivos proveedor omitidos (--skip-vendor)")
 
@@ -156,7 +156,7 @@ def process(
 
         # 5. Generar reporte global
         log.info("5/6 Generando reporte global...")
-        global_report = generate_global_report(consol, base_path, date_str, statuses)
+        generate_global_report(consol, base_path, date_str, statuses)
 
         # Validación
         log.info("Validando resultados...")
@@ -213,43 +213,27 @@ def report(
 
 @app.command()
 def download(
-    limite_dias: int = typer.Option(
-        18, "--limite-dias", "-l", help="Número máximo de días a mostrar"
+    fecha: Optional[str] = typer.Option(
+        None, "--fecha", "-f", help="Fecha específica (YYYYMMDD)"
+    ),
+    desde: Optional[str] = typer.Option(
+        None, "--desde", "-d", help="Fecha inicio rango (YYYYMMDD)"
+    ),
+    hasta: Optional[str] = typer.Option(
+        None, "--hasta", "-h", help="Fecha fin rango (YYYYMMDD)"
+    ),
+    skip_compress: bool = typer.Option(
+        False, "--skip-compress", "-sc", help="Omitir compresión de archivos descargados"
     ),
     env: str = typer.Option("dev", "--env", "-e", help="Entorno de configuración"),
 ) -> None:
     """Descarga archivos vendor desde el servidor SFTP."""
     cfg = load_config(env)
-    sftp_cfg = cfg["sftp"]
-    vendor_dir: Path = cfg["paths"]["vendor"]
+    dates = _resolve_dates(fecha, desde, hasta, yesterday=True)
 
-    sftp = SFTPManager(
-        host=sftp_cfg["host"],
-        port=sftp_cfg["port"],
-        uid=sftp_cfg["uid"],
-        pwd=sftp_cfg["pwd"],
-        remote_path=cfg.get("sftp", {}).get(
-            "remote_path", "./LINK MOBILE LINKMBL BTS_ SMS/"
-        ),
-        local_dir=vendor_dir,
-    )
-
-    files = sftp.get_files_list()
-    available = sorted(files, reverse=True)[:limite_dias]
-
-    if not available:
-        log.warning("No hay archivos disponibles en SFTP")
-        return
-
-    log.info("Archivos disponibles (últimos %d días):", limite_dias)
-    for i, f in enumerate(available, 1):
-        log.info("  %2d. %s", i, f)
-
-    # Descargar el más reciente
-    selected = available[0]
-    log.info("Descargando archivo más reciente: %s", selected)
-    sftp.download_file(selected)
-    log.info("Descarga completada")
+    for date_str in dates:
+        log.info("Descargando archivos para %s...", date_str)
+        _sftp_download(cfg, date_str, limite_dias=18, compress=not skip_compress)
 
 
 # ---------------------------------------------------------------------------
@@ -338,3 +322,43 @@ def _run_transfers(cfg: dict, transfer_dir: Path, date_str: str) -> None:
             config_value=f"S1XX84W NOT IN ('0000000000','0') AND S1Z141Q2 = '{date_str}'",
         )
         transfers.acsbundle_download()
+
+
+
+def _sftp_download(
+    cfg: dict,
+    date_str: str,
+    limite_dias: int = 10,
+    compress: bool = True,
+) -> None:
+    """Descarga archivos vendor desde el servidor SFTP."""
+    sftp_cfg = cfg["sftp"]
+    vendor_dir: Path = cfg["paths"]["vendor"]
+
+    sftp = SFTPManager(
+        host=sftp_cfg["host"],
+        port=sftp_cfg["port"],
+        uid=sftp_cfg["uid"],
+        pwd=sftp_cfg["pwd"],
+        remote_path=cfg.get("sftp", {}).get(
+            "remote_path", "./LINK MOBILE LINKMBL BTS_ SMS/"
+        ),
+        local_dir=vendor_dir,
+    )
+
+    files = sftp.get_files_list()
+    available = sorted(files, reverse=True)[:limite_dias]
+
+    if not available:
+        log.warning("No hay archivos disponibles en SFTP")
+        return
+
+    log.info("Archivos disponibles (últimos %d días):", limite_dias)
+    for i, f in enumerate(available, 1):
+        log.info("  %2d. %s", i, f)
+
+    # Descargar el archivo requerido por date_str si existe, sino el más reciente
+    selected = next((f for f in available if date_str in f), available[0])
+    log.info("Descargando archivo: %s", selected)
+    sftp.download_file(selected, compress=compress)
+    log.info("Descarga completada")
