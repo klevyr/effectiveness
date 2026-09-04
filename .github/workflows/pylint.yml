@@ -17,7 +17,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint polars paramiko pyarrow python-dotenv typer
+        pip install pylint polars paramiko pyarrow pyyaml python-dotenv typer
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py')
