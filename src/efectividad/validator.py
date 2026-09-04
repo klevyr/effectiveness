@@ -10,7 +10,7 @@ import polars as pl
 
 from efectividad.logger import setup_logger
 from efectividad.models import ValidationResult
-from efectividad.storage import read_parquet
+from efectividad.storage import delete_transfer_date, read_parquet
 
 log = setup_logger()
 
@@ -75,6 +75,51 @@ def check_effectiveness(
 
     _print_validation(results)
     return results
+
+
+def validate_result_effectiveness(
+        cfg: dict,
+        date_str: str,
+        result_check: list[ValidationResult],
+) -> None:
+    """Valida resultado de efectividad y elimina archivos si es satisfactorio.
+
+    Parameters
+    ----------
+    date_str : str
+        Fecha en formato ``YYYYMMDD``.
+
+    Returns
+    -------
+    bool
+        True si todos los checks pasaron, False si alguno falló.
+    """
+    results = pl.DataFrame(result_check)
+    pass_count = results.filter(
+        pl.col("estado").is_in(["pass",])
+    ).shape[0]
+    danger_count = results.filter(
+        pl.col("estado").is_in(["danger", "warning"])
+    ).shape[0]
+    # Elimina Informacion recuperada si el resultado de validación es satisfactorio
+    if pass_count > 0 and pass_count > danger_count:
+        log.info(">>> Validación exitosa: %d checks pasaron, %d checks fallaron",
+                    pass_count,
+                    danger_count
+        )    
+        """Elimina datos procesados para una fecha específica."""
+        transfer_dir: Path = cfg["paths"]["transfer"]
+        vendor_dir: Path = cfg["paths"]["vendor"]
+        # gestor
+        delete_transfer_date(transfer_dir, date_str, mask="*.csv")
+        # vendor
+        delete_transfer_date(vendor_dir, date_str, mask="")
+    else:
+        log.warning(">>> Validación fallida: %d checks pasaron, %d checks fallaron",
+                    pass_count,
+                    danger_count
+        )
+
 
 
 def _print_validation(results: list[ValidationResult]) -> None:

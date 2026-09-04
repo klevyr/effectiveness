@@ -6,6 +6,8 @@ organizados por tabla y fecha.
 
 from __future__ import annotations
 
+from glob import glob
+import os
 import shutil
 from pathlib import Path
 
@@ -161,6 +163,28 @@ def delete_date(base_path: Path, table: str, date_str: str) -> bool:
         return True
     log.warning("Archivo no encontrado para eliminar: %s", target_file)
     return False
+
+
+def delete_transfer_date(target_dir: Path, date_str: str, mask: str="") -> bool:
+    """Elimina los datos de una fecha específica.
+
+    Returns
+    -------
+    bool
+        ``True`` si se eliminó algún archivo.
+    """
+    target_files = []
+    if mask == "":
+        target_files = [Path(target_dir) / f"sms_traffic_{date_str}.csv"]
+    else:
+        target_files = glob(f"{target_dir}/{mask}")
+
+    for target_file in target_files:
+        if os.path.exists(target_file):
+            os.unlink(target_file)
+        log.info("Eliminado: %s", target_file)
+
+    return True
 
 
 def table_exists(base_path: Path, table: str, date_str: str) -> bool:

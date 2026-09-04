@@ -77,7 +77,7 @@ def generate_effectiveness(
 
     result = pl.concat(frames, how="diagonal_relaxed")
     log.info("Consolidado generado: %s registros", result.select(pl.len()).collect().item())
-    # write_parquet(result, base_path, "consolidado", date_str, mode="overwrite")
+    write_parquet(result, base_path, "consolidado", date_str, mode="overwrite")
     return result
 
 

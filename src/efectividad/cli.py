@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
+from tabnanny import check
 from typing import Optional
 import polars as pl
 
@@ -21,10 +22,10 @@ from efectividad.config import load_config
 from efectividad.exporter import generate_length_report, generate_reports
 from efectividad.loader import load_gestor, load_vendor
 from efectividad.logger import setup_logger
-from efectividad.storage import delete_date, read_parquet
+from efectividad.storage import delete_date, delete_transfer_date, read_parquet
 from efectividad.transformer import generate_effectiveness, generate_global_report
 from efectividad.utils import OSTransfersController, SFTPManager
-from efectividad.validator import check_effectiveness
+from efectividad.validator import check_effectiveness, validate_result_effectiveness
 
 app = typer.Typer(
     name="efectividad",
@@ -77,7 +78,6 @@ def _resolve_dates(
     dt = datetime.now() - timedelta(days=1)
     return [dt.strftime("%Y%m%d")]
 
-
 # ---------------------------------------------------------------------------
 # process: Flujo completo de efectividad
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ def process(
         # 1.1 Desacrga archivos sftp (si aplica)
         if not skip_vendor:
             log.info(">> 2/7 Descargando archivos proveedor...")
-            _sftp_download(cfg, date_str, limite_dias=len(dates), compress=False)
+            _sftp_download(cfg, date_str, compress=False)
         else:
             log.info(">> 2/7 Archivos proveedor omitidos (--skip-vendor)")
 
@@ -161,7 +161,8 @@ def process(
 
         # Validación
         log.info(">>> Validando resultados...")
-        check_effectiveness(base_path, date_str, checks)
+        result_check = check_effectiveness(base_path, date_str, checks)
+        validate_result_effectiveness(cfg, date_str, result_check)
 
         log.info("===== COMPLETADO %s =====", date_str)
 
@@ -234,7 +235,7 @@ def download(
 
     for date_str in dates:
         log.info("Descargando archivos para %s...", date_str)
-        _sftp_download(cfg, date_str, limite_dias=len(dates), compress=not skip_compress)
+        _sftp_download(cfg, date_str, compress=not skip_compress)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +330,6 @@ def _run_transfers(cfg: dict, transfer_dir: Path, date_str: str) -> None:
 def _sftp_download(
     cfg: dict,
     date_str: str,
-    limite_dias: int = 10,
     compress: bool = True,
 ) -> None:
     """Descarga archivos vendor desde el servidor SFTP."""
@@ -348,16 +348,13 @@ def _sftp_download(
     )
 
     files = sftp.get_files_list()
-    available = sorted(files, reverse=True)[:limite_dias]
+    available = sorted(files, reverse=True)
 
     if not available:
         log.warning("No hay archivos disponibles en SFTP")
         return
 
-    log.info("Archivos disponibles (últimos %d días):", limite_dias)
-    for i, f in enumerate(available, 1):
-        log.info("  %2d. %s", i, f)
-
     # Descargar el archivo requerido por date_str si existe, sino el más reciente
     selected = next((f for f in available if date_str in f), available[0])
     sftp.download_file(selected, compress=compress)
+

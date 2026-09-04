@@ -73,7 +73,7 @@ def load_gestor(
         csv_path = tdir / csv_name
         if not csv_path.exists():
             log.warning("Archivo gestor no encontrado, omitiendo: %s", csv_path)
-            continue
+            raise FileNotFoundError(f"Archivo gestor no encontrado: {csv_path}")
         log.info("Leyendo gestor: %s", csv_path)
         df = pl.scan_csv(
             csv_path,
@@ -163,7 +163,7 @@ def load_vendor(
         log.warning(
             "No se encontraron archivos CSV para fecha %s en %s", date_str, vdir
         )
-        return pl.LazyFrame()
+        raise FileNotFoundError(f"Archivo vendor no encontrado: {vdir}")
 
     frames: list[pl.LazyFrame] = []
     for zf in csv_files:
