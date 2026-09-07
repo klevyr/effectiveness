@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import polars as pl
+import pandas as pd
 
 from efectividad.logger import setup_logger
 from efectividad.storage import read_parquet, write_parquet
@@ -300,3 +301,34 @@ def load_stats(
     )
     
     return stats
+
+
+def load_efectividad_config(base_path: Path) -> dict[str, pl.LazyFrame]:
+    """Carga configuracion de efectividad desde EXCEL.
+
+    Parameters
+    ----------
+    base_path : Path
+        Directorio raíz de datos Parquet.
+
+    Returns
+    -------
+    dict[str, pl.LazyFrame]
+        Configuracion de efectividad.
+    """
+    cfg_path = base_path.parent / "cfg" / "EfectividadConfig.xlsx"
+
+    if not cfg_path.exists():
+        log.warning("Archivo de configuración no encontrado: %s", cfg_path)
+        raise FileNotFoundError(f"Archivo de configuración no encontrado: {cfg_path}")
+
+    ef_cfg = pd.ExcelFile(cfg_path)
+
+    sheets = ef_cfg.sheet_names
+    lfs = {}
+    for sheet in sheets:
+        lfs[sheet] = pl.from_pandas(
+            ef_cfg.parse(sheet_name=sheet, dtype=str)
+        ).lazy()
+
+    return lfs

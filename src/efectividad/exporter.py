@@ -10,9 +10,11 @@ import re
 from pathlib import Path
 
 import polars as pl
+import pandas as pd
 
 from efectividad.logger import setup_logger
 from efectividad.storage import read_parquet
+from efectividad.loader import load_efectividad_config
 
 log = setup_logger()
 
@@ -22,7 +24,7 @@ _ID_RE = re.compile(r"^[0-9]{10}$")
 def generate_reports(
     base_path: Path,
     date_str: str,
-    statuses: list[dict],
+    output_cols: list,
     other_reports: dict[str, str] | None = None,
 ) -> list[Path]:
     """Genera reportes de efectividad exportados a Excel.
@@ -33,8 +35,6 @@ def generate_reports(
         Directorio raíz de datos Parquet.
     date_str : str
         Fecha en formato ``YYYYMMDD``.
-    statuses : list[dict]
-        Definiciones de estado del YAML.
     other_reports : dict[str, str] | None
         Entidades adicionales ``{nombre: entidad_id}``.
 
@@ -46,35 +46,40 @@ def generate_reports(
     report_dir = base_path.parent / "exportaciones" / date_str[:6]
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    report = read_parquet(base_path, "reporte", date_str)
-    if report.collect().is_empty():
+    report_lf = read_parquet(base_path, "reporte", date_str)
+    if report_lf.collect().is_empty():
         log.warning("No hay datos de reporte para %s", date_str)
         return []
 
+    efectividad_cfg = load_efectividad_config(base_path)
+
     exported: list[Path] = []
+    for _report in efectividad_cfg.keys():
+        rpt_filename = f"SMS-{_report}_{date_str}.xlsx"
+        file_path = report_dir / rpt_filename
+        cfg_data = efectividad_cfg[_report]
+        
+        informe_lf = _export_report_efectividad(
+            report_lf,
+            cfg_data,
+            file_path,
+            output_cols
+        )
+        exported.append(file_path)
 
-    # --- Reporte General ---
-    file_general = report_dir / f"SMS-General_{date_str}.xlsx"
-    _export_report(report, file_general)
-    exported.append(file_general)
-
-    # --- Rechazos (solo para General) ---
-    rechazos = _filter_rechazos(report)
-    if rechazos.height > 0:
-        file_rechazos = report_dir / f"SMS-Rechazos_{date_str}.xlsx"
-        rechazos.write_excel(file_rechazos)
-        log.info("Rechazos exportados: %s", file_rechazos)
-        exported.append(file_rechazos)
-    else:
-        log.info("No se generó informacion de rechazos para %s", date_str)
+        if _report == "General":
+            rpt_filename = f"SMS-Rechazos_{date_str}.xlsx"
+            file_path = report_dir / rpt_filename
+            rechazos = _export_report_rechazos(informe_lf, file_path)
+            exported.append(file_path)
 
     # --- Reportes por entidad ---
     if other_reports:
         for nombre, entidad_id in other_reports.items():
-            ent_report = report.filter(pl.col("Entidad") == entidad_id)
-            if not ent_report.is_empty():
+            ent_report = report_lf.filter(pl.col("Entidad") == entidad_id)
+            if not ent_report.select(pl.len()).collect().is_empty():
                 file_ent = report_dir / f"SMS-OTH-{nombre}_{date_str}.xlsx"
-                _export_report(ent_report, file_ent)
+                _export_report_entidad(ent_report, file_ent, output_cols)
                 exported.append(file_ent)
 
     log.info("Reportes generados: %d archivos", len(exported))
@@ -84,28 +89,32 @@ def generate_reports(
 def generate_length_report(
     base_path: Path,
     date_str: str,
-) -> pl.DataFrame | None:
+) -> pl.LazyFrame | None:
     """Genera reporte de SMS con longitud mayor a 160 caracteres.
 
     Returns
     -------
-    pl.DataFrame | None
-        DataFrame con los SMS largos, o ``None`` si no hay.
+    pl.LazyFrame | None
+        LazyFrame con los SMS largos, o ``None`` si no hay.
     """
-    report = read_parquet(base_path, "reporte", date_str)
-    if report.is_empty():
-        return None
+    report_dir = base_path.parent / "exportaciones" / date_str[:6]
+    report_dir.mkdir(parents=True, exist_ok=True)
 
-    long_msgs = report.filter(pl.col("Mensaje").str.len_chars() > 160)
-    if long_msgs.is_empty():
+    report_lf = read_parquet(base_path, "reporte", date_str)
+    if report_lf.collect().is_empty():
+        log.warning("No hay datos de reporte para %s", date_str)
+        raise FileNotFoundError("No hay datos de reporte para %s", date_str)
+    
+    long_msgs = report_lf.filter(pl.col("Mensaje").str.len_chars() > 160)
+    if long_msgs.collect().is_empty():
         log.info("No hay SMS con longitud > 160 para %s", date_str)
         return None
 
-    log.info("SMS largos encontrados: %d", long_msgs.height)
+    log.info("SMS largos encontrados: %d", long_msgs.select(pl.len()).collect().item())
 
     # Resumen por código y campaña
-    summary = long_msgs.group_by(["CdMensaje", "Desc_Campania"]).agg(
-        pl.col("TransactionId").count().alias("Cantidad")
+    summary = long_msgs.group_by(["Entidad","Marca","CdMensaje"]).agg(
+        pl.col("NumCelular").count().alias("Cantidad")
     )
 
     # Exportar
@@ -113,73 +122,98 @@ def generate_length_report(
     export_dir.mkdir(parents=True, exist_ok=True)
     file_out = export_dir / f"SMS-OTH-LONGITUDES_{date_str}.xlsx"
 
-    with pl.ExcelWriter(file_out) as writer:
-        summary.write_excel(writer, sheet_name="Resume")
-        long_msgs.write_excel(writer, sheet_name="Database")
+    writer = pd.ExcelWriter(file_out, engine='openpyxl')
+    summary.collect().to_pandas().to_excel(writer, sheet_name="Resume", index=False)
+    long_msgs.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
+    writer.close()
 
     log.info("Reporte de longitudes exportado: %s", file_out)
     return summary
 
 
-def _export_report(report: pl.DataFrame, filepath: Path) -> None:
+def _export_report_efectividad(
+        report: pl.LazyFrame,
+        cfg: pl.LazyFrame,
+        output_filepath: Path,
+        output_cols: list
+    ) -> pl.LazyFrame:
     """Exporta un reporte con resume y database."""
     # Crear resume: agrupar por Area x Estado
-    if "Fecha" in report.columns:
-        group_cols = ["Fecha", "Estado_Proveedor", "Estado_Operadora"]
-    else:
-        group_cols = ["Estado_Proveedor", "Estado_Operadora"]
+    informe = report.join(
+        cfg,
+        on=["Marca","CdMensaje"],
+        how="inner"
+    ).select(output_cols)
 
-    resume = report.group_by(group_cols).agg(
-        pl.col("TransactionId").count().alias("Volumen")
-    )
+    resume = (
+        informe.group_by(["Fecha", "Desc_Area", "Estado_Proveedor", "Estado_Operadora"])
+        .agg(pl.col("NumCelular").count().alias("Volumen"))
+    ).collect().to_pandas()
 
-    with pl.ExcelWriter(filepath) as writer:
-        resume.write_excel(writer, sheet_name="Resume")
-        report.write_excel(writer, sheet_name="Database")
+    writer = pd.ExcelWriter(output_filepath, engine='openpyxl')
+    resume.to_excel(writer, sheet_name="Resume", index=False)
+    informe.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
+    writer.close()
 
-    log.info("Reporte exportado: %s", filepath)
+    log.info("Reporte exportado: %s", output_filepath.name)
+
+    return informe
 
 
-def _filter_rechazos(report: pl.DataFrame) -> pl.DataFrame:
+def _export_report_entidad(
+        report: pl.LazyFrame,
+        output_filepath: Path,
+        output_cols: list,
+    ) -> pl.LazyFrame:
+    """Exporta un reporte con resume y database."""
+    # Crear resume: agrupar por Area x Estado
+    cols_entidad = [col for col in output_cols if col not in ["Desc_Notificacion", "Desc_Area"]]
+
+    informe = report.select(cols_entidad)
+
+    resume = (
+        report.group_by(["Fecha", "Estado_Proveedor", "Estado_Operadora"])
+        .agg(pl.col("NumCelular").count().alias("Volumen"))
+    ).collect().to_pandas()
+
+    writer = pd.ExcelWriter(output_filepath, engine='openpyxl')
+    resume.to_excel(writer, sheet_name="Resume", index=False)
+    informe.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
+    writer.close()
+
+    log.info("Reporte exportado: %s", output_filepath.name)
+
+    return informe
+
+
+def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyFrame:
     """Filtra registros rechazados para análisis de cartera."""
-    required_cols = [
-        "Estado_Operadora",
-        "Estado_Proveedor",
-        "Volumen",
-        "Porc_Rechazo",
-        "Entidad",
-        "Tarjeta_Cuenta",
-        "Desc_AreaCampania",
-        "DescriptionStatus",
-        "Num_Doc_Identificacion",
-        "NumCelular",
-    ]
-    if not all(c in report.columns for c in required_cols):
-        return pl.DataFrame()
-
-    filtered = report.filter(
-        (pl.col("Estado_Operadora") == "No Entregado")
-        & (pl.col("Estado_Proveedor") == "Entregado")
-        & (pl.col("Volumen") > 10)
-        & (pl.col("Porc_Rechazo") == 100.0)
-        & (pl.col("Entidad").is_in(["DC", "ID"]))
-        & (pl.col("Desc_AreaCampania") == "Analisis de Cartera")
-        & (
-            pl.col("DescriptionStatus").is_in(
-                [
-                    "MT number is unknown (code 1)",
-                    "Teleservice Not Provisioned (code 11)",
-                ]
+    filtered = (
+        report.with_columns(
+            pl.col("Tarjeta_Cuenta").cast(pl.Int64).alias("Tarjeta_Cuenta_Num")
+        )
+        .filter(
+            (pl.col("Estado_Operadora") == "RECHAZADO")
+            & (pl.col("Estado_Proveedor") == "EXITOSO")
+            & (pl.col("Volumen") > 10)
+            & (pl.col("Porc_Rechazado") == 100.0)
+            & (pl.col("Entidad").is_in(["DC", "ID"]))
+            & (pl.col("Tarjeta_Cuenta_Num") > 0)
+            & (pl.col("Desc_Area") == "MONITOREO DE RIESGO")
+            & (pl.col("Num_Doc_Identificacion").str.contains(r"^\d{10}$"))
+            & (
+                pl.col("DescriptionStatus").is_in(
+                    [
+                        "MT number is unknown (code 1)",
+                        "Teleservice Not Provisioned (code 11)",
+                    ]
+                )
             )
         )
+        .unique(subset=["Num_Doc_Identificacion", "NumCelular"])
     )
 
-    # Validar cédula de 10 dígitos
-    if not filtered.is_empty():
-        filtered = filtered.filter(
-            pl.col("Num_Doc_Identificacion").str.contains(r"^\d{10}$")
-        )
-        filtered = filtered.unique(subset=["Num_Doc_Identificacion", "NumCelular"])
+    filtered.collect().to_pandas().to_excel(output_path, index=False)
 
-    log.info("Rechazos filtrados: %d registros", filtered.height)
+    log.info("Rechazos filtrados: %d registros", filtered.select(pl.len()).collect().item())
     return filtered

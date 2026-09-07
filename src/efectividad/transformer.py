@@ -77,7 +77,7 @@ def generate_effectiveness(
 
     result = pl.concat(frames, how="diagonal_relaxed")
     log.info("Consolidado generado: %s registros", result.select(pl.len()).collect().item())
-    write_parquet(result, base_path, "consolidado", date_str, mode="overwrite")
+    # write_parquet(result, base_path, "consolidado", date_str, mode="overwrite")
     return result
 
 
@@ -135,8 +135,8 @@ def _do_join(
             pl.col("ConfId"),
             pl.col("TransactionId"),
             pl.col("Mensaje"),
-            pl.col("Carrier"),
-            pl.col("Date_parsed").alias("Fecha_Hora_YP"),
+            pl.col("Carrier").alias("Desc_Operadora"),
+            pl.col("Date_parsed").alias("Fecha_Hora"),
             pl.col("ApplicationStatus"),
             pl.col("PlatformStatus"),
             pl.col("ShortCode"),

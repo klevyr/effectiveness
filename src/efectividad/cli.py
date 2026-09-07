@@ -22,7 +22,7 @@ from efectividad.config import load_config
 from efectividad.exporter import generate_length_report, generate_reports
 from efectividad.loader import load_gestor, load_vendor
 from efectividad.logger import setup_logger
-from efectividad.storage import delete_date, delete_transfer_date, read_parquet
+from efectividad.storage import delete_date, delete_transfer_date, read_parquet, list_dates
 from efectividad.transformer import generate_effectiveness, generate_global_report
 from efectividad.utils import OSTransfersController, SFTPManager
 from efectividad.validator import check_effectiveness, validate_result_effectiveness
@@ -135,21 +135,23 @@ def process(
 
         # 2. Cargar gestor
         log.info(">> 3/7 Cargando datos del gestor...")
-        load_gestor(
-            transfer_dir,
-            base_path,
-            date_str,
-            gestor_columns=gestor_columns,
-        )
+        if not skip_transfers:
+            load_gestor(
+                transfer_dir,
+                base_path,
+                date_str,
+                gestor_columns=gestor_columns,
+            )
 
         # 3. Cargar vendor
         log.info(">> 4/7 Cargando datos del vendor...")
-        load_vendor(
-            vendor_dir,
-            base_path,
-            date_str,
-            vendor_columns=vendor_columns,
-        )
+        if not skip_vendor:
+            load_vendor(
+                vendor_dir,
+                base_path,
+                date_str,
+                vendor_columns=vendor_columns,
+            )
 
         # 4. Generar efectividad
         log.info(">> 5/7 Generando consolidado de efectividad...")
@@ -192,13 +194,12 @@ def report(
     base_path: Path = cfg["paths"]["data"]
 
     dates = _resolve_dates(fecha, desde, hasta)
-    statuses = cfg.get("statuses", [])
     other_reports = cfg.get("other_reports", {})
 
     for date_str in dates:
         log.info("Generando reportes para %s...", date_str)
 
-        files = generate_reports(base_path, date_str, statuses, other_reports)
+        files = generate_reports(base_path, date_str, cfg["output_columns"], other_reports)
         for f in files:
             log.info("  → %s", f)
 
@@ -287,8 +288,6 @@ def status(
     cfg = load_config(env)
     base_path: Path = cfg["paths"]["data"]
 
-    from efectividad.storage import list_dates
-
     dates = list_dates(base_path, tabla)
     if not dates:
         log.info("No hay datos para la tabla '%s'", tabla)
@@ -296,8 +295,17 @@ def status(
 
     log.info("Fechas disponibles en '%s':", tabla)
     for d in dates:
-        df = read_parquet(base_path, tabla, d)
-        log.info("  %s → %d registros", d, df.select(pl.len()).collect().item())
+        lf = read_parquet(base_path, tabla, d)
+        
+        efec = ( 
+            lf.filter(pl.col("Estado_Operadora") == "EXITOSO")
+              .group_by(["Estado_Operadora"])
+              .agg(pl.len().alias("count"))
+        )
+        total = lf.select(pl.len()).collect().item()
+        efectivos = efec.collect().get_column("count").item()
+
+        log.info("  %s → %d registros: %.2f%% efectivos", d, total, (efectivos/total)*100 if total > 0 else 0.0)
 
 
 # ---------------------------------------------------------------------------

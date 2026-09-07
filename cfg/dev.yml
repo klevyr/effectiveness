@@ -96,28 +96,28 @@ validation_threshold:
   warning: 0.95
 
 # configuracion reporte salida
-report_columns:
+output_columns:
+  - Fecha_Hora
   - Fecha
+  - Hora
   - Entidad
   - Marca
-  - Hora
-  - IdCodigo
+  - CdMensaje
   - Tarjeta_Cuenta
-  - Cedula
-  - NumCel
-  - Mensaje
-  - ConfId
+  - Num_Doc_Identificacion
+  - NumCelular
   - IdUsuario
-  - MobileNumber
-  - ShortCode
-  - Message
-  - Priority
-  - TotalFragments
-  - Type
-  - Carrier
-  - Date
+  - Mensaje
   - TransactionId
+  - Desc_Operadora
   - ApplicationStatus
-  - ResponseCode
   - PlatformStatus
+  - Desc_Notificacion
+  - Desc_Area
+  - Estado_Proveedor
+  - Estado_Operadora
   - DescriptionStatus
+  - ShortCode
+  - Volumen
+  - Porc_Exitoso
+  - Porc_Rechazado

@@ -220,7 +220,7 @@ __marimo__/
 # Efectividad - Datos generados
 bin/
 data/
-exports/
+exportaciones/
 vendor/
 test/
 transfers/
