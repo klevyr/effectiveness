@@ -54,11 +54,10 @@ def generate_reports(
     efectividad_cfg = load_efectividad_config(base_path)
 
     exported: list[Path] = []
-    for _report in efectividad_cfg.keys():
-        rpt_filename = f"SMS-{_report}_{date_str}.xlsx"
+    for rpt_name, cfg_data in efectividad_cfg.items():
+        rpt_filename = f"SMS-{rpt_name}_{date_str}.xlsx"
         file_path = report_dir / rpt_filename
-        cfg_data = efectividad_cfg[_report]
-        
+
         informe_lf = _export_report_efectividad(
             report_lf,
             cfg_data,
@@ -67,10 +66,10 @@ def generate_reports(
         )
         exported.append(file_path)
 
-        if _report == "General":
+        if rpt_name == "General":
             rpt_filename = f"SMS-Rechazos_{date_str}.xlsx"
             file_path = report_dir / rpt_filename
-            rechazos = _export_report_rechazos(informe_lf, file_path)
+            _export_report_rechazos(informe_lf, file_path)
             exported.append(file_path)
 
     # --- Reportes por entidad ---
@@ -103,8 +102,8 @@ def generate_length_report(
     report_lf = read_parquet(base_path, "reporte", date_str)
     if report_lf.collect().is_empty():
         log.warning("No hay datos de reporte para %s", date_str)
-        raise FileNotFoundError("No hay datos de reporte para %s", date_str)
-    
+        raise FileNotFoundError(f"No hay datos de reporte para {date_str}")
+
     long_msgs = report_lf.filter(pl.col("Mensaje").str.len_chars() > 160)
     if long_msgs.collect().is_empty():
         log.info("No hay SMS con longitud > 160 para %s", date_str)

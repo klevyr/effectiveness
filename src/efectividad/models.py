@@ -71,6 +71,7 @@ REPORT_COLUMNS: list[str] = [
 
 @dataclass
 class ValidationResult:
+    """Validacion de informacion resultante de efectividad"""
     codigo: str
     descripcion: str
     total_gestor: int

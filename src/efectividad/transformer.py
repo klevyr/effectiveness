@@ -196,7 +196,10 @@ def generate_global_report(
         for cat in unique_categories
     )
 
-    log.info("Reporte global generado: %s registros", global_report.select(pl.len()).collect().item())
+    log.info(
+        "Reporte global generado: %s registros", 
+        global_report.select(pl.len()).collect().item()
+    )
     write_parquet(global_report, base_path, "reporte", date_str, mode="overwrite")
     return global_report
 
@@ -229,18 +232,14 @@ def generate_stats_report(
     # Construir DataFrame de estados
     report = _match_statuses(consol, status_lf, date_str)
 
-    stats = report.group_by(["Fecha","NumCelular","Estado_Operadora"]).agg(
-        [
-            pl.len().alias("Envios")
-        ]
+    stats = report.group_by(["Fecha","NumCelular","Estado_Operadora"])\
+        .agg(pl.len().alias("Envios")
     )
     stats = stats.with_columns(
-        [
             pl.col("Fecha").str.slice(0,6).alias("MesID"),
             pl.col("Fecha").str.slice(6,8).alias("DiaID")
-        ]
     )
-    
+
     log.info("Reporte estadisticas generado. %s", base_path)
     write_partitioned_parquet(stats, base_path, "stats", part_fields=["MesID","DiaID"])
     return report

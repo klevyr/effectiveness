@@ -8,12 +8,9 @@ from __future__ import annotations
 
 from glob import glob
 import os
-import shutil
 from pathlib import Path
 
 import polars as pl
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 from efectividad.logger import setup_logger
 

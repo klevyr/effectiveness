@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
-from tabnanny import check
 from typing import Optional
 import polars as pl
 
@@ -22,7 +21,7 @@ from efectividad.config import load_config
 from efectividad.exporter import generate_length_report, generate_reports
 from efectividad.loader import load_gestor, load_vendor
 from efectividad.logger import setup_logger
-from efectividad.storage import delete_date, delete_transfer_date, read_parquet, list_dates
+from efectividad.storage import delete_date, read_parquet, list_dates
 from efectividad.transformer import generate_effectiveness, generate_global_report
 from efectividad.utils import OSTransfersController, SFTPManager
 from efectividad.validator import check_effectiveness, validate_result_effectiveness
@@ -296,8 +295,8 @@ def status(
     log.info("Fechas disponibles en '%s':", tabla)
     for d in dates:
         lf = read_parquet(base_path, tabla, d)
-        
-        efec = ( 
+
+        efec = (
             lf.filter(pl.col("Estado_Operadora") == "EXITOSO")
               .group_by(["Estado_Operadora"])
               .agg(pl.len().alias("count"))
@@ -305,7 +304,10 @@ def status(
         total = lf.select(pl.len()).collect().item()
         efectivos = efec.collect().get_column("count").item()
 
-        log.info("  %s → %d registros: %.2f%% efectivos", d, total, (efectivos/total)*100 if total > 0 else 0.0)
+        log.info(
+            "  %s → %d registros: %.2f%% efectivos",
+            d, total, (efectivos/total)*100 if total > 0 else 0.0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -365,4 +367,3 @@ def _sftp_download(
     # Descargar el archivo requerido por date_str si existe, sino el más reciente
     selected = next((f for f in available if date_str in f), available[0])
     sftp.download_file(selected, compress=compress)
-

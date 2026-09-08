@@ -7,9 +7,6 @@ SplitNamesEC.
 from __future__ import annotations
 
 import configparser
-import logging
-import os
-import re
 import zipfile
 from pathlib import Path
 from subprocess import PIPE, Popen
@@ -62,7 +59,7 @@ class OSTransfersController:
 
     def acsbundle_init(self) -> None:
         """Inicializa sesión con AS400."""
-        proc = Popen(
+        with Popen(
             [
                 "java",
                 "-jar",
@@ -76,20 +73,20 @@ class OSTransfersController:
             stdin=PIPE,
             stdout=PIPE,
             stderr=PIPE,
-        )
-        output, err = proc.communicate()
-        if err:
-            log.error("acsbundle_init error: %s", err.decode("utf-8", errors="replace"))
-        for line in output.decode("ISO8859-1", errors="replace").splitlines():
-            if line.strip():
-                log.info(line)
+        ) as proc:
+            output, err = proc.communicate()
+            if err:
+                log.error("acsbundle_init error: %s", err.decode("utf-8", errors="replace"))
+            for line in output.decode("ISO8859-1", errors="replace").splitlines():
+                if line.strip():
+                    log.info(line)
 
     def acsbundle_download(self) -> None:
         """Descarga archivos desde AS400."""
         if self._current_transfer is None:
             log.error("No hay transferencia configurada")
             return
-        proc = Popen(
+        with Popen(
             [
                 "java",
                 "-jar",
@@ -102,22 +99,22 @@ class OSTransfersController:
             stdin=PIPE,
             stdout=PIPE,
             stderr=PIPE,
-        )
-        output, err = proc.communicate()
-        if err:
-            log.error("acsbundle_download error: %s", err)
-        for line in output.decode("ISO8859-1", errors="replace").splitlines():
-            stripped = line.strip()
-            if stripped[:6].upper() == "FILAS ":
-                rows = stripped.split(":")[1].strip()
-                log.info("Descargadas %s filas", rows)
+        ) as proc:
+            output, err = proc.communicate()
+            if err:
+                log.error("acsbundle_download error: %s", err)
+            for line in output.decode("ISO8859-1", errors="replace").splitlines():
+                stripped = line.strip()
+                if stripped[:6].upper() == "FILAS ":
+                    rows = stripped.split(":")[1].strip()
+                    log.info("Descargadas %s filas", rows)
 
     def acsbundle_upload(self) -> None:
         """Carga archivos a AS400."""
         if self._current_transfer is None:
             log.error("No hay transferencia configurada")
             return
-        proc = Popen(
+        with Popen(
             [
                 "java",
                 "-jar",
@@ -129,15 +126,15 @@ class OSTransfersController:
             stdin=PIPE,
             stdout=PIPE,
             stderr=PIPE,
-        )
-        output, err = proc.communicate()
-        if err:
-            log.error("acsbundle_upload error: %s", err)
-        for line in output.decode("ISO8859-1", errors="replace").splitlines():
-            stripped = line.strip()
-            if stripped[:6].upper() == "FILAS ":
-                rows = stripped.split(":")[1].strip()
-                log.info("Subidas %s filas", rows)
+        ) as proc:
+            output, err = proc.communicate()
+            if err:
+                log.error("acsbundle_upload error: %s", err)
+            for line in output.decode("ISO8859-1", errors="replace").splitlines():
+                stripped = line.strip()
+                if stripped[:6].upper() == "FILAS ":
+                    rows = stripped.split(":")[1].strip()
+                    log.info("Subidas %s filas", rows)
 
 
 # ---------------------------------------------------------------------------

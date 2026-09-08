@@ -13,7 +13,7 @@ import polars as pl
 import pandas as pd
 
 from efectividad.logger import setup_logger
-from efectividad.storage import read_parquet, write_parquet
+from efectividad.storage import write_parquet
 
 log = setup_logger()
 
@@ -178,7 +178,7 @@ def load_vendor(
             read_kwargs["has_header"] = False
         else:
             read_kwargs["infer_schema"] = True
-        lf = pl.scan_csv(zf, 
+        lf = pl.scan_csv(zf,
                          encoding="utf8-lossy",
                          **read_kwargs
                          )
@@ -299,7 +299,7 @@ def load_stats(
     stats = lf.rename(
         {cat: f"Vol_{cat.title()}" for cat in unique_categories}
     )
-    
+
     return stats
 
 

@@ -1,0 +1,21 @@
+# Informacion de Configuracion
+
+## EfectividadConfig
+
+El aplicativo requiere un archivo excel con la informacion de los codigos y notificaciones
+las cuales genera el archivo de salida.
+
+Nombre Archivo requerido: `EfectividadConfig.xlsx`
+
+El archivo puede estas separado en varias pestanias dependiendo de la necesidad, el reporte
+se genera conforme al nombre de la pestania. 
+
+Situacion actual: Archivo tiene dos pestanias: `General` y `Cobranzas`
+Formato Requerido:
+
+| Marca   |   CdMensaje | Desc_Notificacion                       | Desc_Area   |
+|:--------|------------:|:----------------------------------------|:------------|
+| DN      |        1279 | Comunicación Gasto de Cobranzas Parcial | COBRANZAS   |
+| VI      |        0013 | Recordatorio de pago Visa Mora Interdin | COBRANZAS   |
+| VI      |        0910 | Restricción de Consumos                 | COBRANZAS   |
+| VI      |        0347 | Campaña especial                        | COBRANZAS   |

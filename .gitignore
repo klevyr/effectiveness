@@ -226,6 +226,7 @@ test/
 transfers/
 *.csv
 *.parquet
+*.xlsx
 
 # Efectividad - Archivos de configuración local
 .env
