@@ -62,7 +62,8 @@ def check_effectiveness(
             total_ges = ges.filter(pl.col("IdCodigo") == codigo).select(pl.len()).collect().item()
 
         if not consol.collect().is_empty():
-            total_consol = consol.filter(pl.col("CdMensaje") == codigo).select(pl.len()).collect().item()
+            total_consol = consol.filter(pl.col("CdMensaje") == codigo)\
+                .select(pl.len()).collect().item()
 
         vr = ValidationResult(
             codigo=codigo,
@@ -104,10 +105,10 @@ def validate_result_effectiveness(
     # Elimina Informacion recuperada si el resultado de validación es satisfactorio
     if pass_count > 0 and pass_count > danger_count:
         log.info(">>> Validación exitosa: %d checks pasaron, %d checks fallaron",
-                    pass_count,
-                    danger_count
-        )    
-        """Elimina datos procesados para una fecha específica."""
+            pass_count,
+            danger_count
+        )
+        # Elimina datos procesados para una fecha específica.
         transfer_dir: Path = cfg["paths"]["transfer"]
         vendor_dir: Path = cfg["paths"]["vendor"]
         # gestor
