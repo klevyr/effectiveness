@@ -104,19 +104,18 @@ def validate_result_effectiveness(
     ).shape[0]
     # Elimina Informacion recuperada si el resultado de validación es satisfactorio
     if pass_count > 0 and pass_count > danger_count:
-        log.info(">>> Validación exitosa: %d checks pasaron, %d checks fallaron",
+        log.info(">>> Validación exitosa: %d 🟢 checks pasaron, %d 🟡 checks fallaron",
             pass_count,
             danger_count
         )
         # Elimina datos procesados para una fecha específica.
         transfer_dir: Path = cfg["paths"]["transfer"]
         vendor_dir: Path = cfg["paths"]["vendor"]
-        # gestor
+        # gestor & vendor
         delete_transfer_date(transfer_dir, date_str, mask="*.csv")
-        # vendor
         delete_transfer_date(vendor_dir, date_str, mask="")
     else:
-        log.warning(">>> Validación fallida: %d checks pasaron, %d checks fallaron",
+        log.warning(">>> ❌ Validación fallida: %d 🟡 checks fallaron",
                     pass_count,
                     danger_count
         )

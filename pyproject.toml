@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "efectividad"
-version = "1.0.20"
+version = "1.0.24"
 description = "Generador de reportes de efectividad"
 authors = [
     { name = "Klever Ramon" }

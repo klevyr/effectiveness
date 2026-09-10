@@ -118,6 +118,6 @@ output_columns:
   - Estado_Operadora
   - DescriptionStatus
   - ShortCode
-  - Volumen
+  - Volumen_30d
   - Porc_Exitoso
   - Porc_Rechazado

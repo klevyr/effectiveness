@@ -191,7 +191,8 @@ def generate_global_report(
         on="NumCelular",
         how="left",
     ).with_columns(
-        (pl.col(f"Vol_{cat.title()}") / pl.col("Volumen") * 100)
+        (pl.col(f"Vol_{cat.title()}") / pl.col("Volumen_30d") * 100)
+        .round(2)
         .alias(f"Porc_{cat.title()}")
         for cat in unique_categories
     )
@@ -237,7 +238,8 @@ def generate_stats_report(
     )
     stats = stats.with_columns(
             pl.col("Fecha").str.slice(0,6).alias("MesID"),
-            pl.col("Fecha").str.slice(6,8).alias("DiaID")
+            pl.col("Fecha").str.slice(6,8).alias("DiaID"),
+            pl.col("Estado_Operadora").cast(pl.Categorical)
     )
 
     log.info("Reporte estadisticas generado. %s", base_path)

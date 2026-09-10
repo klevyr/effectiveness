@@ -282,7 +282,7 @@ def load_stats(
     # obtener fecha 30 dias antes de date_str y filtrar por rango de fechas
     start_date = (datetime.strptime(date_str, "%Y%m%d") - timedelta(days=30)).strftime("%Y%m%d")
     end_date = date_str
-
+    # obtiene la informacion estadistica
     lf = (
         pl.scan_parquet(stats_path)
             .filter((pl.col("Fecha") >= start_date) & (pl.col("Fecha") <= end_date))
@@ -292,7 +292,7 @@ def load_stats(
                 filter(
                     pl.col("Estado_Operadora") == cat
                 ).sum().alias(cat) for cat in unique_categories] +
-                [pl.col("Envios").sum().alias("Volumen")]
+                [pl.col("Envios").sum().alias("Volumen_30d")]
             )
         )
 

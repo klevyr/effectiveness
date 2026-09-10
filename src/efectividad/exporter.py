@@ -51,6 +51,7 @@ def generate_reports(
         log.warning("No hay datos de reporte para %s", date_str)
         return []
 
+    log.info("Cargando configuracion reportes")
     efectividad_cfg = load_efectividad_config(base_path)
 
     exported: list[Path] = []
@@ -137,6 +138,7 @@ def _export_report_efectividad(
         output_cols: list
     ) -> pl.LazyFrame:
     """Exporta un reporte con resume y database."""
+    log.info("Generando informacion efectividad %s", output_filepath.name)
     # Crear resume: agrupar por Area x Estado
     informe = report.join(
         cfg,
@@ -154,8 +156,6 @@ def _export_report_efectividad(
     informe.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
     writer.close()
 
-    log.info("Reporte exportado: %s", output_filepath.name)
-
     return informe
 
 
@@ -165,6 +165,7 @@ def _export_report_entidad(
         output_cols: list,
     ) -> pl.LazyFrame:
     """Exporta un reporte con resume y database."""
+    log.info("Generando informes adicionales: %s", output_filepath.name)
     # Crear resume: agrupar por Area x Estado
     cols_entidad = [col for col in output_cols if col not in ["Desc_Notificacion", "Desc_Area"]]
 
@@ -180,13 +181,12 @@ def _export_report_entidad(
     informe.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
     writer.close()
 
-    log.info("Reporte exportado: %s", output_filepath.name)
-
     return informe
 
 
 def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyFrame:
     """Filtra registros rechazados para análisis de cartera."""
+    log.info("Generando informacion rechazos: %s", output_path.name)
     filtered = (
         report.with_columns(
             pl.col("Tarjeta_Cuenta").cast(pl.Int64).alias("Tarjeta_Cuenta_Num")
@@ -194,7 +194,7 @@ def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyF
         .filter(
             (pl.col("Estado_Operadora") == "RECHAZADO")
             & (pl.col("Estado_Proveedor") == "EXITOSO")
-            & (pl.col("Volumen") > 10)
+            & (pl.col("Volumen_30d") > 10)
             & (pl.col("Porc_Rechazado") == 100.0)
             & (pl.col("Entidad").is_in(["DC", "ID"]))
             & (pl.col("Tarjeta_Cuenta_Num") > 0)
@@ -211,8 +211,10 @@ def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyF
         )
         .unique(subset=["Num_Doc_Identificacion", "NumCelular"])
     )
-
+    # exportar archivos
     filtered.collect().to_pandas().to_excel(output_path, index=False)
 
-    log.info("Rechazos filtrados: %d registros", filtered.select(pl.len()).collect().item())
+    log.info("Rechazos filtrados: %d registros",
+             filtered.select(pl.len()).collect().item()
+    )
     return filtered
