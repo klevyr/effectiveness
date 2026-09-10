@@ -6,7 +6,8 @@ paths:
   data: ./data
   vendor: ./vendor
   transfer: ./transfers
-  export: ./exports
+  export: ./exportaciones
+  catalog: ./cfg/
 
 # Configuración de estados del proveedor
 statuses:
@@ -103,6 +104,7 @@ output_columns:
   - Entidad
   - Marca
   - CdMensaje
+  - Desc_Banco_Envio
   - Tarjeta_Cuenta
   - Num_Doc_Identificacion
   - NumCelular
@@ -112,12 +114,15 @@ output_columns:
   - Desc_Operadora
   - ApplicationStatus
   - PlatformStatus
+  - Desc_Campania
+  - Desc_AreaCampania
+  - Tipo_Campania
+  - Cd_Enlace
+  - Estado_Operadora
   - Desc_Notificacion
   - Desc_Area
   - Estado_Proveedor
-  - Estado_Operadora
   - DescriptionStatus
-  - ShortCode
   - Volumen_30d
   - Porc_Exitoso
   - Porc_Rechazado

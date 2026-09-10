@@ -19,3 +19,28 @@ Formato Requerido:
 | VI      |        0013 | Recordatorio de pago Visa Mora Interdin | COBRANZAS   |
 | VI      |        0910 | Restricción de Consumos                 | COBRANZAS   |
 | VI      |        0347 | Campaña especial                        | COBRANZAS   |
+
+## Catalogo SMS
+
+El aplicativo anterior se conecta al una base de datos donde se almacena la informacion 
+del catalogo de notificaciones, por lo que para mantener los formatos de salida es necesario
+cargar esta informacion durante la generacion de los reportes.
+
+Se puede obtener el catalogo actualizado asi:
+
+```python
+df = pd.read_sql("""
+    SELECT CONCAT(ent, marc, cod) uid, marca AS Desc_Banco_Envio,
+        descrip AS Desc_Campania, `area` AS Desc_AreaCampania,
+        tipo AS Tipo_Campania, enlace AS Cd_Enlace 
+    FROM sms_details WHERE enlace NOT IN ('Postfix','TCS')""", engine)
+df.to_csv("D:/com/dev/effectiveness/cfg/catalog.csv", index=False)
+```
+
+|      | uid      | Desc_Banco_Envio   | Desc_Campania                      | Desc_AreaCampania   | Tipo_Campania   | Cd_Enlace   |
+|-----:|:---------|:-------------------|:-----------------------------------|:--------------------|:----------------|:------------|
+| 2269 | IDMC2034 | interdin           | SMS NBO ONE TRIP                   | Negocios            | automatico      | BTS-365     |
+|  536 | DCDN9000 | diners             | AUT Login Exitoso                  | Canales             | automatico      | BTS-365     |
+| 2058 | DCDN0207 | diners             | SMS Feria Compu 2009               |                     | manual          | BTS-365     |
+| 2216 | IDVI4653 | interdin           | SMS OTP TMB Envío Clave Temporal   | Canales             | automatico      | BTS-365     |
+| 2555 | IDVI0633 | interdin           | SMS Notificacion de Consumo Debito | Canales             | automatico      | BTS-365     |

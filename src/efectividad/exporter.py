@@ -14,7 +14,7 @@ import xlsxwriter
 
 from efectividad.logger import setup_logger
 from efectividad.storage import read_parquet
-from efectividad.loader import load_efectividad_config
+from efectividad.loader import load_efectividad_config, load_catalog
 
 log = setup_logger()
 
@@ -22,7 +22,7 @@ _ID_RE = re.compile(r"^[0-9]{10}$")
 
 
 def generate_reports(
-    base_path: Path,
+    cfg: dict,
     date_str: str,
     output_cols: list,
     other_reports: dict[str, str] | None = None,
@@ -31,8 +31,8 @@ def generate_reports(
 
     Parameters
     ----------
-    base_path : Path
-        Directorio raíz de datos Parquet.
+    cfg : dict
+        Datos de configuracion
     date_str : str
         Fecha en formato ``YYYYMMDD``.
     other_reports : dict[str, str] | None
@@ -43,6 +43,8 @@ def generate_reports(
     list[Path]
         Rutas de archivos generados.
     """
+    base_path: Path = cfg["paths"]["data"]
+    cat_path: Path = cfg["paths"]["catalog"]
     report_dir = base_path.parent / "exportaciones" / date_str[:6]
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -50,6 +52,20 @@ def generate_reports(
     if report_lf.collect().is_empty():
         log.warning("No hay datos de reporte para %s", date_str)
         return []
+    
+    catalog_lf = load_catalog(cat_path)
+    efectividad_lf = (
+        report_lf.with_columns(
+            pl.concat_str(
+                [pl.col("Entidad"), pl.col("Marca"), pl.col("CdMensaje")]
+                ).alias("uid"),
+            )
+            .join(
+                catalog_lf,
+                on="uid",
+                how="left"
+            )
+        )
 
     log.info("Cargando configuracion reportes")
     efectividad_cfg = load_efectividad_config(base_path)
@@ -60,7 +76,7 @@ def generate_reports(
         file_path = report_dir / rpt_filename
 
         informe_lf = _export_report_efectividad(
-            report_lf,
+            efectividad_lf,
             cfg_data,
             file_path,
             output_cols
@@ -76,7 +92,7 @@ def generate_reports(
     # --- Reportes por entidad ---
     if other_reports:
         for nombre, entidad_id in other_reports.items():
-            ent_report = report_lf.filter(pl.col("Entidad") == entidad_id)
+            ent_report = efectividad_lf.filter(pl.col("Entidad") == entidad_id)
             if not ent_report.select(pl.len()).collect().is_empty():
                 file_ent = report_dir / f"SMS-OTH-{nombre}_{date_str}.xlsx"
                 _export_report_entidad(ent_report, file_ent, output_cols)
@@ -126,12 +142,14 @@ def generate_length_report(
         # Resumen
         worksheet = workbook.add_worksheet("Resume")
         summary.collect().write_excel(
+            workbook=workbook,
             worksheet=worksheet,
             autofit=True
         )
         # Database
         worksheet = workbook.add_worksheet("Database")
         long_msgs.collect().write_excel(
+            workbook=workbook,
             worksheet=worksheet,
             autofit=True,
             table_style="Table Style Medium 2",
@@ -165,12 +183,14 @@ def _export_report_efectividad(
         # Resumen
         worksheet = workbook.add_worksheet("Resume")
         resume.collect().write_excel(
+            workbook=workbook,
             worksheet=worksheet,
             autofit=True
         )
         # Database
         worksheet = workbook.add_worksheet("Database")
         informe.collect().write_excel(
+            workbook=workbook,
             worksheet=worksheet,
             autofit=True,
             table_style="Table Style Medium 2",
@@ -200,12 +220,14 @@ def _export_report_entidad(
         # Resumen
         worksheet = workbook.add_worksheet("Resume")
         resume.collect().write_excel(
+            workbook=workbook,
             worksheet=worksheet,
             autofit=True
         )
         # Database
         worksheet = workbook.add_worksheet("Database")
         informe.collect().write_excel(
+            workbook=workbook,
             worksheet=worksheet,
             autofit=True,
             table_style="Table Style Medium 2",

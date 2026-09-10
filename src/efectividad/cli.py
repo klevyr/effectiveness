@@ -198,7 +198,7 @@ def report(
     for date_str in dates:
         log.info("Generando reportes para %s...", date_str)
 
-        files = generate_reports(base_path, date_str, cfg["output_columns"], other_reports)
+        files = generate_reports(cfg, date_str, cfg["output_columns"], other_reports)
         for f in files:
             log.info("  → %s", f)
 

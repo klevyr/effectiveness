@@ -324,7 +324,6 @@ def load_efectividad_config(base_path: Path) -> dict[str, pl.LazyFrame]:
     sheets = pl.read_excel(
         cfg_path,
         sheet_id=0,
-        read_options={"infer_schema": False},
     )
     # prepara dict con configuracion
     lfs = {
@@ -332,3 +331,36 @@ def load_efectividad_config(base_path: Path) -> dict[str, pl.LazyFrame]:
         for sheet_name, df in sheets.items()
     }
     return lfs
+
+
+def load_catalog(
+    config_path: Path,
+) -> pl.LazyFrame:
+    """Lee la informacion de catalogo de notificaciones generadas por transferencias del gestor
+
+    Returns
+    -------
+    pl.LazyFrame
+        LazyFrame del gestor transformado.
+    """
+    catalog_path: Path = config_path / "catalog.csv"
+
+    cat_schema = {
+        'uid':pl.String, 'Desc_Banco_Envio':pl.String, 'Desc_Campania':pl.String,
+        'Desc_AreaCampania':pl.String, 'Tipo_Campania':pl.String, 'Cd_Enlace':pl.String,
+    }
+    if not catalog_path.exists():
+        log.warning("No se encontro el catalogo: %s", catalog_path)
+        raise FileNotFoundError(f"No se encontro el catalogo: {catalog_path}")
+    
+    log.info("Leyendo catalogo: %s", catalog_path)
+    lf = pl.scan_csv(
+        catalog_path,
+        has_header=True,
+        schema=cat_schema,
+        encoding="utf8-lossy",
+        null_values=[""],
+    )
+
+    return lf
+
