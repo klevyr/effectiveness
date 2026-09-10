@@ -230,3 +230,6 @@ transfers/
 
 # Efectividad - Archivos de configuración local
 .env
+
+# VsCode configurations
+.vscode/
