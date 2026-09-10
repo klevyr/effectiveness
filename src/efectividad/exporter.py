@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 import polars as pl
-import pandas as pd
+import xlsxwriter
 
 from efectividad.logger import setup_logger
 from efectividad.storage import read_parquet
@@ -121,11 +121,21 @@ def generate_length_report(
     export_dir = base_path.parent / "exportaciones" / date_str[:6]
     export_dir.mkdir(parents=True, exist_ok=True)
     file_out = export_dir / f"SMS-OTH-LONGITUDES_{date_str}.xlsx"
-
-    writer = pd.ExcelWriter(file_out, engine='openpyxl')
-    summary.collect().to_pandas().to_excel(writer, sheet_name="Resume", index=False)
-    long_msgs.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
-    writer.close()
+    # Exportacion a Excel
+    with xlsxwriter.Workbook(file_out) as workbook:
+        # Resumen
+        worksheet = workbook.add_worksheet("Resume")
+        summary.collect().write_excel(
+            worksheet=worksheet,
+            autofit=True
+        )
+        # Database
+        worksheet = workbook.add_worksheet("Database")
+        long_msgs.collect().write_excel(
+            worksheet=worksheet,
+            autofit=True,
+            table_style="Table Style Medium 2",
+        )
 
     log.info("Reporte de longitudes exportado: %s", file_out)
     return summary
@@ -149,12 +159,22 @@ def _export_report_efectividad(
     resume = (
         informe.group_by(["Fecha", "Desc_Area", "Estado_Proveedor", "Estado_Operadora"])
         .agg(pl.col("NumCelular").count().alias("Volumen"))
-    ).collect().to_pandas()
-
-    writer = pd.ExcelWriter(output_filepath, engine='openpyxl')
-    resume.to_excel(writer, sheet_name="Resume", index=False)
-    informe.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
-    writer.close()
+    )
+    # Exportacion a Excel
+    with xlsxwriter.Workbook(output_filepath) as workbook:
+        # Resumen
+        worksheet = workbook.add_worksheet("Resume")
+        resume.collect().write_excel(
+            worksheet=worksheet,
+            autofit=True
+        )
+        # Database
+        worksheet = workbook.add_worksheet("Database")
+        informe.collect().write_excel(
+            worksheet=worksheet,
+            autofit=True,
+            table_style="Table Style Medium 2",
+        )
 
     return informe
 
@@ -174,12 +194,22 @@ def _export_report_entidad(
     resume = (
         report.group_by(["Fecha", "Estado_Proveedor", "Estado_Operadora"])
         .agg(pl.col("NumCelular").count().alias("Volumen"))
-    ).collect().to_pandas()
-
-    writer = pd.ExcelWriter(output_filepath, engine='openpyxl')
-    resume.to_excel(writer, sheet_name="Resume", index=False)
-    informe.collect().to_pandas().to_excel(writer, sheet_name="Database", index=False)
-    writer.close()
+    )
+    # Exportacion a Excel
+    with xlsxwriter.Workbook(output_filepath) as workbook:
+        # Resumen
+        worksheet = workbook.add_worksheet("Resume")
+        resume.collect().write_excel(
+            worksheet=worksheet,
+            autofit=True
+        )
+        # Database
+        worksheet = workbook.add_worksheet("Database")
+        informe.collect().write_excel(
+            worksheet=worksheet,
+            autofit=True,
+            table_style="Table Style Medium 2",
+        )
 
     return informe
 
@@ -212,7 +242,11 @@ def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyF
         .unique(subset=["Num_Doc_Identificacion", "NumCelular"])
     )
     # exportar archivos
-    filtered.collect().to_pandas().to_excel(output_path, index=False)
+    filtered.collect().write_excel(output_path,
+                                   worksheet="Database",
+                                   autofit=True,
+                                   table_style="Table Style Medium 2",
+                                   )
 
     log.info("Rechazos filtrados: %d registros",
              filtered.select(pl.len()).collect().item()
