@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "efectividad"
-version = "1.0.24"
+version = "1.0.25"
 description = "Generador de reportes de efectividad"
 authors = [
     { name = "Klever Ramon" }
@@ -13,14 +13,14 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 dependencies = [
-  "pandas",
+  "fastexcel",
   "polars[calendars]>=1.0",
   "paramiko",
   "pyarrow",
   "pyyaml",
   "python-dotenv",
-  "openpyxl",
   "typer[all]",
+  "xlsxwriter",
 ]
 
 [tool.setuptools]
