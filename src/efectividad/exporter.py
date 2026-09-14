@@ -43,6 +43,7 @@ def generate_reports(
     list[Path]
         Rutas de archivos generados.
     """
+
     base_path: Path = cfg["paths"]["data"]
     cat_path: Path = cfg["paths"]["catalog"]
     report_dir = base_path.parent / "exportaciones" / date_str[:6]
@@ -121,7 +122,11 @@ def generate_length_report(
         log.warning("No hay datos de reporte para %s", date_str)
         raise FileNotFoundError(f"No hay datos de reporte para {date_str}")
 
-    long_msgs = report_lf.filter(pl.col("Mensaje").str.len_chars() > 160)
+    long_msgs = (
+        report_lf
+        .filter(pl.col("Mensaje").str.len_chars() > 160)
+        .unique(subset=["Fecha_Hora","NumCelular","TransactionId"], keep="any")
+    )
     if long_msgs.collect().is_empty():
         log.info("No hay SMS con longitud > 160 para %s", date_str)
         return None
@@ -172,7 +177,7 @@ def _export_report_efectividad(
         cfg,
         on=["Marca","CdMensaje"],
         how="inner"
-    ).select(output_cols)
+    ).select(output_cols).unique(subset=["Fecha_Hora","NumCelular","TransactionId"], keep="any")
 
     resume = (
         informe.group_by(["Fecha", "Desc_Area", "Estado_Proveedor", "Estado_Operadora"])
@@ -209,7 +214,9 @@ def _export_report_entidad(
     # Crear resume: agrupar por Area x Estado
     cols_entidad = [col for col in output_cols if col not in ["Desc_Notificacion", "Desc_Area"]]
 
-    informe = report.select(cols_entidad)
+    informe = report.select(cols_entidad).unique(
+        subset=["Fecha_Hora","NumCelular","TransactionId"], keep="any"
+    )
 
     resume = (
         report.group_by(["Fecha", "Estado_Proveedor", "Estado_Operadora"])
@@ -261,7 +268,7 @@ def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyF
                 )
             )
         )
-        .unique(subset=["Num_Doc_Identificacion", "NumCelular"])
+        .unique(subset=["Num_Doc_Identificacion", "NumCelular"], keep="any")
     )
     # exportar archivos
     filtered.collect().write_excel(output_path,

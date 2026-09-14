@@ -8,7 +8,7 @@ las cuales genera el archivo de salida.
 Nombre Archivo requerido: `EfectividadConfig.xlsx`
 
 El archivo puede estas separado en varias pestanias dependiendo de la necesidad, el reporte
-se genera conforme al nombre de la pestania. 
+se genera conforme al nombre de la pestania.
 
 Situacion actual: Archivo tiene dos pestanias: `General` y `Cobranzas`
 Formato Requerido:
@@ -22,7 +22,7 @@ Formato Requerido:
 
 ## Catalogo SMS
 
-El aplicativo anterior se conecta al una base de datos donde se almacena la informacion 
+El aplicativo anterior se conecta al una base de datos donde se almacena la informacion
 del catalogo de notificaciones, por lo que para mantener los formatos de salida es necesario
 cargar esta informacion durante la generacion de los reportes.
 
