@@ -77,6 +77,7 @@ def _resolve_dates(
     dt = datetime.now() - timedelta(days=1)
     return [dt.strftime("%Y%m%d")]
 
+
 # ---------------------------------------------------------------------------
 # process: Flujo completo de efectividad
 # ---------------------------------------------------------------------------
@@ -84,6 +85,7 @@ def _resolve_dates(
 
 @app.command()
 def process(
+    *,
     fecha: Optional[str] = typer.Option(
         None, "--fecha", "-f", help="Fecha específica (YYYYMMDD)"
     ),
@@ -225,7 +227,10 @@ def download(
         None, "--hasta", "-h", help="Fecha fin rango (YYYYMMDD)"
     ),
     skip_compress: bool = typer.Option(
-        False, "--skip-compress", "-sc", help="Omitir compresión de archivos descargados"
+        False,
+        "--skip-compress",
+        "-sc",
+        help="Omitir compresión de archivos descargados",
     ),
     env: str = typer.Option("dev", "--env", "-e", help="Entorno de configuración"),
 ) -> None:
@@ -298,15 +303,17 @@ def status(
 
         efec = (
             lf.filter(pl.col("Estado_Operadora") == "EXITOSO")
-              .group_by(["Estado_Operadora"])
-              .agg(pl.len().alias("count"))
+            .group_by(["Estado_Operadora"])
+            .agg(pl.len().alias("count"))
         )
         total = lf.select(pl.len()).collect().item()
         efectivos = efec.collect().get_column("count").item()
 
         log.info(
             "  %s → %d registros: %.2f%% efectivos",
-            d, total, (efectivos/total)*100 if total > 0 else 0.0
+            d,
+            total,
+            (efectivos / total) * 100 if total > 0 else 0.0,
         )
 
 
@@ -334,7 +341,6 @@ def _run_transfers(cfg: dict, transfer_dir: Path, date_str: str) -> None:
             config_value=f"S1XX84W NOT IN ('0000000000','0') AND S1Z141Q2 = '{date_str}'",
         )
         transfers.acsbundle_download()
-
 
 
 def _sftp_download(

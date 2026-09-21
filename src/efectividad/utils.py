@@ -21,8 +21,6 @@ log = setup_logger()
 # ---------------------------------------------------------------------------
 # AS400 Transfers
 # ---------------------------------------------------------------------------
-
-
 class OSTransfersController:
     """Controla transferencias AS400 vía ``acsbundle.jar``."""
 
@@ -76,7 +74,9 @@ class OSTransfersController:
         ) as proc:
             output, err = proc.communicate()
             if err:
-                log.error("acsbundle_init error: %s", err.decode("utf-8", errors="replace"))
+                log.error(
+                    "acsbundle_init error: %s", err.decode("utf-8", errors="replace")
+                )
             for line in output.decode("ISO8859-1", errors="replace").splitlines():
                 if line.strip():
                     log.info(line)
@@ -140,13 +140,12 @@ class OSTransfersController:
 # ---------------------------------------------------------------------------
 # SFTP Manager
 # ---------------------------------------------------------------------------
-
-
 class SFTPManager:
     """Descarga de archivos vendor desde SFTP."""
 
     def __init__(
         self,
+        *,
         host: str,
         port: int,
         uid: str,
@@ -196,7 +195,7 @@ class SFTPManager:
         finally:
             client.close()
 
-    def download_file(self, filename: str, compress:bool=True) -> Path:
+    def download_file(self, filename: str, compress: bool = True) -> Path:
         """Descarga un archivo y lo comprime como ZIP.
 
         Parameters

@@ -13,6 +13,7 @@ import polars as pl
 
 from efectividad.logger import setup_logger
 from efectividad.storage import write_parquet
+from efectividad.validator import validate_data_status_vendor
 
 log = setup_logger()
 
@@ -68,23 +69,25 @@ def load_gestor(
 
     tdir = Path(transfer_dir)
     frames: list[pl.LazyFrame] = []
-
     for csv_name, tipo in [("broadcast.csv", "B"), ("megareport.csv", "M")]:
         csv_path = tdir / csv_name
         if not csv_path.exists():
-            log.warning("Archivo gestor no encontrado, omitiendo: %s", csv_path)
-            raise FileNotFoundError(f"Archivo gestor no encontrado: {csv_path}")
-        log.info("Leyendo gestor: %s", csv_path)
-        df = pl.scan_csv(
-            csv_path,
-            has_header=False,
-            new_columns=gestor_columns,
-            schema_overrides=gestor_schema,
-            encoding="utf8-lossy",
-            null_values=[""],
-        )
-        df = df.with_columns(pl.lit(tipo).alias("TipoCola"))
-        frames.append(df)
+            log.error("Archivo gestor no encontrado: %s", csv_name)
+            if csv_name == "megareport.csv":
+                raise FileNotFoundError("Archivos gestor requeridos para continuar.")
+
+        if csv_path.exists():
+            log.info("planificando lectura gestor: `%s`", csv_name)
+            df = pl.scan_csv(
+                csv_path,
+                has_header=False,
+                new_columns=gestor_columns,
+                schema_overrides=gestor_schema,
+                encoding="utf8-lossy",
+                null_values=[""],
+            )
+            df = df.with_columns(pl.lit(tipo).alias("TipoCola"))
+            frames.append(df)
 
     if not frames:
         log.error("No se encontraron archivos de gestor en %s", tdir)
@@ -177,10 +180,7 @@ def load_vendor(
             read_kwargs["has_header"] = False
         else:
             read_kwargs["infer_schema"] = True
-        lf = pl.scan_csv(zf,
-                         encoding="utf8-lossy",
-                         **read_kwargs
-                         )
+        lf = pl.scan_csv(zf, encoding="utf8-lossy", **read_kwargs)
         frames.append(lf)
 
     result = pl.concat(frames, how="diagonal_relaxed")
@@ -241,8 +241,12 @@ def load_vendor(
         .map_elements(_md5, return_dtype=pl.Utf8)
         .alias("MessageMD5")
     )
+    # Validacion de consistencia de estatus de vendor
+    validate_data_status_vendor(valid, base_path, date_str)
 
-    log.info("Vendor cargado: %s registros válidos", valid.select(pl.len()).collect().item())
+    log.info(
+        "Vendor cargado: %s registros válidos", valid.select(pl.len()).collect().item()
+    )
     write_parquet(valid, base_path, "vendor", date_str, mode="overwrite")
     return valid
 
@@ -269,9 +273,13 @@ def load_stats(
         Reporte de estadisticas.
     """
 
-    unique_categories = status_lf.select(
-        pl.col("estado_operadora")
-    ).collect().to_series().unique().to_list()
+    unique_categories = (
+        status_lf.select(pl.col("estado_operadora"))
+        .collect()
+        .to_series()
+        .unique()
+        .to_list()
+    )
 
     stats_path = Path(base_path) / "stats"
     if not stats_path.exists():
@@ -279,25 +287,28 @@ def load_stats(
         return pl.LazyFrame()
     log.info("Cargando reporte de estadisticas: %s", stats_path)
     # obtener fecha 30 dias antes de date_str y filtrar por rango de fechas
-    start_date = (datetime.strptime(date_str, "%Y%m%d") - timedelta(days=30)).strftime("%Y%m%d")
+    start_date = (datetime.strptime(date_str, "%Y%m%d") - timedelta(days=30)).strftime(
+        "%Y%m%d"
+    )
     end_date = date_str
     # obtiene la informacion estadistica
     lf = (
         pl.scan_parquet(stats_path)
-            .filter((pl.col("Fecha") >= start_date) & (pl.col("Fecha") <= end_date))
-            .group_by(["NumCelular"])
-            .agg(
-                [pl.col("Envios").
-                filter(
-                    pl.col("Estado_Operadora") == cat
-                ).sum().alias(cat) for cat in unique_categories] +
-                [pl.col("Envios").sum().alias("Volumen_30d")]
-            )
+        .filter((pl.col("Fecha") >= start_date) & (pl.col("Fecha") <= end_date))
+        .group_by(["NumCelular"])
+        .agg(
+            [
+                pl.col("Envios")
+                .filter(pl.col("Estado_Operadora") == cat)
+                .sum()
+                .alias(cat)
+                for cat in unique_categories
+            ]
+            + [pl.col("Envios").sum().alias("Volumen_30d")]
         )
-
-    stats = lf.rename(
-        {cat: f"Vol_{cat.title()}" for cat in unique_categories}
     )
+
+    stats = lf.rename({cat: f"Vol_{cat.title()}" for cat in unique_categories})
 
     return stats
 
@@ -317,19 +328,19 @@ def load_efectividad_config(base_path: Path) -> dict[str, pl.LazyFrame]:
     """
     cfg_path = base_path.parent / "cfg" / "EfectividadConfig.xlsx"
 
-    if not cfg_path.exists():
+    if cfg_path.exists():
+        # Lectura archivo configuracion
+        sheets: dict[str, pl.DataFrame] = pl.read_excel(
+            cfg_path,
+            sheet_id=0,
+        )
+    else:
         log.warning("Archivo de configuración no encontrado: %s", cfg_path)
         raise FileNotFoundError(f"Archivo de configuración no encontrado: {cfg_path}")
-    # Lectura archivo configuracion
-    sheets = pl.read_excel(
-        cfg_path,
-        sheet_id=0,
-    )
+
     # prepara dict con configuracion
-    lfs = {
-        sheet_name: df.lazy()
-        for sheet_name, df in sheets.items()
-    }
+    lfs = {sheet_name: df.lazy() for sheet_name, df in sheets.items()}
+
     return lfs
 
 
@@ -346,13 +357,17 @@ def load_catalog(
     catalog_path: Path = config_path / "catalog.csv"
 
     cat_schema = {
-        'uid':pl.String, 'Desc_Banco_Envio':pl.String, 'Desc_Campania':pl.String,
-        'Desc_AreaCampania':pl.String, 'Tipo_Campania':pl.String, 'Cd_Enlace':pl.String,
+        "uid": pl.String,
+        "Desc_Banco_Envio": pl.String,
+        "Desc_Campania": pl.String,
+        "Desc_AreaCampania": pl.String,
+        "Tipo_Campania": pl.String,
+        "Cd_Enlace": pl.String,
     }
     if not catalog_path.exists():
         log.warning("No se encontro el catalogo: %s", catalog_path)
         raise FileNotFoundError(f"No se encontro el catalogo: {catalog_path}")
-    
+
     log.info("Leyendo catalogo: %s", catalog_path)
     lf = pl.scan_csv(
         catalog_path,
@@ -364,3 +379,37 @@ def load_catalog(
 
     return lf
 
+
+def load_rechazos_gestionados(
+    base_path: Path,
+    max_days: int = 30,
+) -> pl.LazyFrame:
+    """Carga reporte de estadisticas desde Parquet.
+
+    Parameters
+    ----------
+    base_path : Path
+        Directorio raíz de datos Parquet.
+    max_days : int
+        Determina el numero de dias maximo para reintento de gestion
+
+    Returns
+    -------
+    pl.LazyFrame
+        Reporte de estadisticas.
+    """
+    start_date = datetime.today() - timedelta(days=max_days)
+
+    gestionados_path = Path(base_path) / "rechazos"
+    if not gestionados_path.exists():
+        log.warning(
+            "Reporte de rechazos gestionados no encontrado: %s", gestionados_path
+        )
+        return pl.LazyFrame()
+    log.info("Cargando reporte rechazos gestionados: %s", gestionados_path)
+    # obtiene celulares gestionados
+    lf = pl.scan_parquet(gestionados_path).filter(
+        pl.col("Fecha").dt.date() >= start_date.date()
+    )
+
+    return lf

@@ -13,8 +13,12 @@ import polars as pl
 import xlsxwriter
 
 from efectividad.logger import setup_logger
-from efectividad.storage import read_parquet
-from efectividad.loader import load_efectividad_config, load_catalog
+from efectividad.storage import read_parquet, write_simple_parquet
+from efectividad.loader import (
+    load_efectividad_config,
+    load_catalog,
+    load_rechazos_gestionados,
+)
 
 log = setup_logger()
 
@@ -53,20 +57,13 @@ def generate_reports(
     if report_lf.collect().is_empty():
         log.warning("No hay datos de reporte para %s", date_str)
         return []
-    
+
     catalog_lf = load_catalog(cat_path)
-    efectividad_lf = (
-        report_lf.with_columns(
-            pl.concat_str(
-                [pl.col("Entidad"), pl.col("Marca"), pl.col("CdMensaje")]
-                ).alias("uid"),
-            )
-            .join(
-                catalog_lf,
-                on="uid",
-                how="left"
-            )
-        )
+    efectividad_lf = report_lf.with_columns(
+        pl.concat_str([pl.col("Entidad"), pl.col("Marca"), pl.col("CdMensaje")]).alias(
+            "uid"
+        ),
+    ).join(catalog_lf, on="uid", how="left")
 
     log.info("Cargando configuracion reportes")
     efectividad_cfg = load_efectividad_config(base_path)
@@ -77,17 +74,16 @@ def generate_reports(
         file_path = report_dir / rpt_filename
 
         informe_lf = _export_report_efectividad(
-            efectividad_lf,
-            cfg_data,
-            file_path,
-            output_cols
+            efectividad_lf, cfg_data, file_path, output_cols
         )
         exported.append(file_path)
 
         if rpt_name == "General":
             rpt_filename = f"SMS-Rechazos_{date_str}.xlsx"
             file_path = report_dir / rpt_filename
-            _export_report_rechazos(informe_lf, file_path)
+            gestion_lf = load_rechazos_gestionados(base_path)
+            rechazos = _export_report_rechazos(informe_lf, gestion_lf, file_path)
+            write_simple_parquet(lf=rechazos, base_path=base_path, table="rechazos")
             exported.append(file_path)
 
     # --- Reportes por entidad ---
@@ -122,10 +118,8 @@ def generate_length_report(
         log.warning("No hay datos de reporte para %s", date_str)
         raise FileNotFoundError(f"No hay datos de reporte para {date_str}")
 
-    long_msgs = (
-        report_lf
-        .filter(pl.col("Mensaje").str.len_chars() > 160)
-        .unique(subset=["Fecha_Hora","NumCelular","TransactionId"], keep="any")
+    long_msgs = report_lf.filter(pl.col("Mensaje").str.len_chars() > 160).unique(
+        subset=["Fecha_Hora", "NumCelular", "TransactionId"], keep="any"
     )
     if long_msgs.collect().is_empty():
         log.info("No hay SMS con longitud > 160 para %s", date_str)
@@ -134,7 +128,7 @@ def generate_length_report(
     log.info("SMS largos encontrados: %d", long_msgs.select(pl.len()).collect().item())
 
     # Resumen por código y campaña
-    summary = long_msgs.group_by(["Entidad","Marca","CdMensaje"]).agg(
+    summary = long_msgs.group_by(["Entidad", "Marca", "CdMensaje"]).agg(
         pl.col("NumCelular").count().alias("Cantidad")
     )
 
@@ -147,9 +141,7 @@ def generate_length_report(
         # Resumen
         worksheet = workbook.add_worksheet("Resume")
         summary.collect().write_excel(
-            workbook=workbook,
-            worksheet=worksheet,
-            autofit=True
+            workbook=workbook, worksheet=worksheet, autofit=True
         )
         # Database
         worksheet = workbook.add_worksheet("Database")
@@ -165,32 +157,26 @@ def generate_length_report(
 
 
 def _export_report_efectividad(
-        report: pl.LazyFrame,
-        cfg: pl.LazyFrame,
-        output_filepath: Path,
-        output_cols: list
-    ) -> pl.LazyFrame:
+    report: pl.LazyFrame, cfg: pl.LazyFrame, output_filepath: Path, output_cols: list
+) -> pl.LazyFrame:
     """Exporta un reporte con resume y database."""
     log.info("Generando informacion efectividad %s", output_filepath.name)
     # Crear resume: agrupar por Area x Estado
-    informe = report.join(
-        cfg,
-        on=["Marca","CdMensaje"],
-        how="inner"
-    ).select(output_cols).unique(subset=["Fecha_Hora","NumCelular","TransactionId"], keep="any")
-
-    resume = (
-        informe.group_by(["Fecha", "Desc_Area", "Estado_Proveedor", "Estado_Operadora"])
-        .agg(pl.col("NumCelular").count().alias("Volumen"))
+    informe = (
+        report.join(cfg, on=["Marca", "CdMensaje"], how="inner")
+        .select(output_cols)
+        .unique(subset=["Fecha_Hora", "NumCelular", "TransactionId"], keep="any")
     )
+
+    resume = informe.group_by(
+        ["Fecha", "Desc_Area", "Estado_Proveedor", "Estado_Operadora"]
+    ).agg(pl.col("NumCelular").count().alias("Volumen"))
     # Exportacion a Excel
     with xlsxwriter.Workbook(output_filepath) as workbook:
         # Resumen
         worksheet = workbook.add_worksheet("Resume")
         resume.collect().write_excel(
-            workbook=workbook,
-            worksheet=worksheet,
-            autofit=True
+            workbook=workbook, worksheet=worksheet, autofit=True
         )
         # Database
         worksheet = workbook.add_worksheet("Database")
@@ -205,31 +191,30 @@ def _export_report_efectividad(
 
 
 def _export_report_entidad(
-        report: pl.LazyFrame,
-        output_filepath: Path,
-        output_cols: list,
-    ) -> pl.LazyFrame:
+    report: pl.LazyFrame,
+    output_filepath: Path,
+    output_cols: list,
+) -> pl.LazyFrame:
     """Exporta un reporte con resume y database."""
     log.info("Generando informes adicionales: %s", output_filepath.name)
     # Crear resume: agrupar por Area x Estado
-    cols_entidad = [col for col in output_cols if col not in ["Desc_Notificacion", "Desc_Area"]]
+    cols_entidad = [
+        col for col in output_cols if col not in ["Desc_Notificacion", "Desc_Area"]
+    ]
 
     informe = report.select(cols_entidad).unique(
-        subset=["Fecha_Hora","NumCelular","TransactionId"], keep="any"
+        subset=["Fecha_Hora", "NumCelular", "TransactionId"], keep="any"
     )
 
-    resume = (
-        report.group_by(["Fecha", "Estado_Proveedor", "Estado_Operadora"])
-        .agg(pl.col("NumCelular").count().alias("Volumen"))
+    resume = report.group_by(["Fecha", "Estado_Proveedor", "Estado_Operadora"]).agg(
+        pl.col("NumCelular").count().alias("Volumen")
     )
     # Exportacion a Excel
     with xlsxwriter.Workbook(output_filepath) as workbook:
         # Resumen
         worksheet = workbook.add_worksheet("Resume")
         resume.collect().write_excel(
-            workbook=workbook,
-            worksheet=worksheet,
-            autofit=True
+            workbook=workbook, worksheet=worksheet, autofit=True
         )
         # Database
         worksheet = workbook.add_worksheet("Database")
@@ -243,7 +228,9 @@ def _export_report_entidad(
     return informe
 
 
-def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyFrame:
+def _export_report_rechazos(
+    report: pl.LazyFrame, gestion: pl.LazyFrame, output_path: Path
+) -> pl.LazyFrame:
     """Filtra registros rechazados para análisis de cartera."""
     log.info("Generando informacion rechazos: %s", output_path.name)
     filtered = (
@@ -269,15 +256,24 @@ def _export_report_rechazos(report: pl.LazyFrame, output_path: Path) -> pl.LazyF
             )
         )
         .unique(subset=["Num_Doc_Identificacion", "NumCelular"], keep="any")
+        .join(gestion, on="NumCelular", how="anti")
     )
-    # exportar archivos
-    filtered.collect().write_excel(output_path,
-                                   worksheet="Database",
-                                   autofit=True,
-                                   table_style="Table Style Medium 2",
-                                   )
+    # Rechazos generados, se almacenan para no reportar seguido.
+    rechazos = (
+        filtered.with_columns(pl.col("Fecha_Hora").dt.date().alias("Fecha"))
+        .select(["Fecha", "NumCelular"])
+        .unique(subset=["NumCelular"], keep="any")
+    )
 
-    log.info("Rechazos filtrados: %d registros",
-             filtered.select(pl.len()).collect().item()
+    # exportar archivos
+    filtered.collect().write_excel(
+        output_path,
+        worksheet="Database",
+        autofit=True,
+        table_style="Table Style Medium 2",
     )
-    return filtered
+
+    log.info(
+        "Rechazos filtrados: %d registros", filtered.select(pl.len()).collect().item()
+    )
+    return rechazos

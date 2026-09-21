@@ -63,11 +63,44 @@ def write_parquet(
     return target_file
 
 
-def write_partitioned_parquet(
+def write_simple_parquet(
     lf: pl.LazyFrame,
     base_path: Path,
     table: str,
-    part_fields: list[str]
+    mode: str = "overwrite",
+) -> Path:
+    """Escribe un DataFrame como Parquet particionado por fecha.
+
+    Parameters
+    ----------
+    df : pl.LazyFrame
+        Datos a almacenar.
+    base_path : Path
+        Directorio raíz de datos.
+    table : str
+        Nombre de la tabla (subdirectorio).
+    mode : str
+        ``"overwrite"`` reemplaza archivos existentes, ``"append"`` concatena.
+
+    Returns
+    -------
+    Path
+        Ruta del archivo Parquet escrito.
+    """
+    target_dir = _table_dir(base_path, table)
+    target_file = target_dir / "gestiones.parquet"
+
+    if mode == "append" and target_file.exists():
+        existing = read_parquet(base_path, table)
+        lf = pl.concat([existing, lf])
+    # export parquet
+    lf.sink_parquet(target_file)
+    log.info("Escrito en %s", target_file)
+    return target_file
+
+
+def write_partitioned_parquet(
+    lf: pl.LazyFrame, base_path: Path, table: str, part_fields: list[str]
 ) -> Path:
     """Escribe un DataFrame como Parquet particionado por fecha.
 
@@ -162,7 +195,7 @@ def delete_date(base_path: Path, table: str, date_str: str) -> bool:
     return False
 
 
-def delete_transfer_date(target_dir: Path, date_str: str, mask: str="") -> bool:
+def delete_transfer_date(target_dir: Path, date_str: str, mask: str = "") -> bool:
     """Elimina los datos de una fecha específica.
 
     Returns

@@ -2,11 +2,13 @@
 
 Compara conteos entre gestor y consolidado por código de notificación.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import polars as pl
+import xlsxwriter
 
 from efectividad.logger import setup_logger
 from efectividad.models import ValidationResult
@@ -59,11 +61,20 @@ def check_effectiveness(
         total_consol = 0
 
         if not ges.collect().is_empty():
-            total_ges = ges.filter(pl.col("IdCodigo") == codigo).select(pl.len()).collect().item()
+            total_ges = (
+                ges.filter(pl.col("IdCodigo") == codigo)
+                .select(pl.len())
+                .collect()
+                .item()
+            )
 
         if not consol.collect().is_empty():
-            total_consol = consol.filter(pl.col("CdMensaje") == codigo)\
-                .select(pl.len()).collect().item()
+            total_consol = (
+                consol.filter(pl.col("CdMensaje") == codigo)
+                .select(pl.len())
+                .collect()
+                .item()
+            )
 
         vr = ValidationResult(
             codigo=codigo,
@@ -79,9 +90,9 @@ def check_effectiveness(
 
 
 def validate_result_effectiveness(
-        cfg: dict,
-        date_str: str,
-        result_check: list[ValidationResult],
+    cfg: dict,
+    date_str: str,
+    result_check: list[ValidationResult],
 ) -> None:
     """Valida resultado de efectividad y elimina archivos si es satisfactorio.
 
@@ -97,16 +108,21 @@ def validate_result_effectiveness(
     """
     results = pl.DataFrame(result_check)
     pass_count = results.filter(
-        pl.col("estado").is_in(["pass",])
+        pl.col("estado").is_in(
+            [
+                "pass",
+            ]
+        )
     ).shape[0]
-    danger_count = results.filter(
-        pl.col("estado").is_in(["danger", "warning"])
-    ).shape[0]
+    danger_count = results.filter(pl.col("estado").is_in(["danger", "warning"])).shape[
+        0
+    ]
     # Elimina Informacion recuperada si el resultado de validación es satisfactorio
     if pass_count > 0 and pass_count > danger_count:
-        log.info(">>> Validación exitosa: %d 🟢 checks pasaron, %d 🟡 checks fallaron",
+        log.info(
+            ">>> Validación exitosa: %d 🟢 checks pasaron, %d 🟡 checks fallaron",
             pass_count,
-            danger_count
+            danger_count,
         )
         # Elimina datos procesados para una fecha específica.
         transfer_dir: Path = cfg["paths"]["transfer"]
@@ -115,16 +131,14 @@ def validate_result_effectiveness(
         delete_transfer_date(transfer_dir, date_str, mask="*.csv")
         delete_transfer_date(vendor_dir, date_str, mask="")
     else:
-        log.warning(">>> ❌ Validación fallida: %d 🟡 checks fallaron",
-                    pass_count,
-                    danger_count
-        )
-
+        log.warning(">>> ❌ Validación fallida: %d 🟡 checks fallaron", danger_count)
 
 
 def _print_validation(results: list[ValidationResult]) -> None:
     """Imprime la tabla de validación en consola."""
-    log.info("== VALIDACIONES ============================ GESTOR/EFECTIVIDAD ===== %% ESTADO")
+    log.info(
+        "== VALIDACIONES ============================ GESTOR/EFECTIVIDAD ===== %% == ESTADO"
+    )
     for r in results:
         indicator = {
             "pass": "🟢 pass",
@@ -139,3 +153,34 @@ def _print_validation(results: list[ValidationResult]) -> None:
             r.porcentaje,
             indicator,
         )
+
+
+def validate_data_status_vendor(vendor: pl.LazyFrame, base_path: Path, date_str: str):
+    """Realiza la validacion de los estados de confirmacion del archivo de proveedor"""
+    log.info("Validando inconsistencias estados...")
+    inconsistencias = vendor.filter(
+        pl.col("DescriptionStatus") == "Success (code 0)",
+        pl.col("PlatformStatus") == "UNDELIV",
+    ).select(
+        [
+            "Date",
+            "TransactionId",
+            "MobileNumber",
+            "ShortCode",
+            "Carrier",
+            "PlatformStatus",
+            "ApplicationStatus",
+            "DescriptionStatus",
+        ]
+    )
+
+    output_filepath = base_path / f"{date_str}_PlatformStatus_UNDELIV.xlsx"
+    if not inconsistencias.collect().is_empty():
+        log.warning("🚩 Se identificaron inconsistencias de estados.")
+        with xlsxwriter.Workbook(output_filepath) as workbook:
+            # datos
+            worksheet = workbook.add_worksheet("UNDELIV")
+            inconsistencias.collect().write_excel(
+                workbook=workbook, worksheet=worksheet, autofit=True
+            )
+        log.info("Archivo con inconsistencia exportado: %s", output_filepath)
