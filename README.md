@@ -1,63 +1,192 @@
-# Efectividad SMS YPP
+# Efectividad SMS
 
-### Procedimiento
+## Descripción general
 
-* Acceder al sftp Diners y buscar el ultimo archivo dentro de `/LINK MOBILE LINKMBL BTS_ SMS` o `SMS`
-  * Utiliza la libreta [Descarga_SFTP](../Efectividad/Descarga_SFTP.ipynb) para descargar directamente en la carpeta correspondiente.
-* ~Descargar los archivos que sean necesarios al equipo local~
-* ~Seleccionar el archivo descargado y comprimirlo en `ZIP`~
-* ~El archivo comprimido subirlo a la carpeta `/Vendor`~
-* Iniciar el flujo, seleccionando el rango de fechas
-* 🚩 IMPORTANTE: Asegurar de cargar los archivos comprimidos en **ZIP**
-  en el directorio `/Vendor` de las fecha a procesar. 
-* 🚩 No necesitas descargar transferencias
-* Ejecutar por separado la generacion de los reportes.
+Este proyecto automatiza la medición de efectividad de envíos de SMS para áreas de cobranzas y gestión comercial. Su objetivo es determinar si un mensaje fue entregado o no, cruzando la información del gestor y del proveedor para obtener un indicador consolidado por fecha, entidad, marca y campaña.
 
-## Descripcion funcionalidad
+El flujo procesa:
 
-El proceso de conciliacion consiste en identificar el estado de los mensajes si esta fue entregado o no,
-para esto se realiza el cruce entre el log del gestor `TMSMT13U` (Log SMS `aka` Metroline) y el log del
-proveedor (vendor), con el fin de poder identificar la campania y marca que corresponde.
+- datos del gestor (registro de envíos y metadata comercial),
+- datos del proveedor/vendor (estado del mensaje y respuesta operadora),
+- validaciones internas del resultado,
+- generación de reportes exportables y reportes por longitud.
 
-Esto se lo realiza asi, debido a que la informacion del proveedor unicamente contiene datos de celular, mensaje y estado, 
-mientras que la informacion importante se encuentra en gestor, como es la marca, codigo de campania, entidad y tipo de sms,
-por lo que el unir ambas fuentes es necesario, sin embargo, no existen campos en compun que sean 100% confiables, 
-por lo que se realiza un cruce por `message`, `mobilenumber` y `transactionId` que los datos en comun.
+## Objetivo funcional
 
-Dado que el cruzar por mensaje no es optimo, se lo pasa a `MD5` para poder realizar un cruce mas optimo y adicionalmente no
-todos los casos tiene el campo transaccionid, por lo que se hace una relacion entre el tiempo generado y el tiempo enviado, 
-mismo que no sobrepase mas de 5min.
+La conciliación consiste en identificar el estado final de cada mensaje. Para ello, el sistema cruza:
 
-El estado se dividen en dos y se encuentran detalladas en la seccion de **definiciones**:
-* Estado Proveedor, `ApplicationStatus`, indica lo entregado hacia las operadoras y que queda pendiente de la gestion de estas.
-* Estado Operadora, campo `PlatformStatus`, para casos en los que se tiene una respuesta de la operadora se almacena en este campo y adicionamente se nos entrega una descripcion del estado `DescripcionStatus`
+- el log del gestor (Broadcast `TMSMT20U` / Metroline `TMSMT13U`),
+- los archivos del proveedor (vendor),
+- la información de campaña, marca, entidad y tipo de SMS que solo aparece en gestor.
 
+Como no siempre existe una clave única compartida confiable, el proceso realiza un cruce por campos como `message`, `mobilenumber` y `transactionId`, apoyado además en un cálculo relacionado con el tiempo de envío y generación del mensaje para casos sin transacción o con información parcial.
 
+## Estado del proceso
 
-## Definiciones
+El sistema clasifica los resultados en dos niveles:
 
-* Durante este proceso se esdta cruzando la informacion entre los envios
-registrados en gestor y los envios del proveedor.
-* Conforme a las definiciones del proveedor, esta es la descripcion de los estados:
+- `ApplicationStatus`: estado reportado por el proveedor hacia la operadora.
+- `PlatformStatus`: respuesta real de la operadora, cuando existe.
+
+La relación vigente del proyecto es la siguiente:
 
 | ApplicationStatus | PlatformStatus | Estado_Proveedor | Estado_Operadora |
 |---|---|---|---|
-|SUBMITD|DELIVRD|✅Entregado|✅Entregado|
-|SUBMITD|UNDELIV|✅Entregado|❌No Entregado|
-|UNDELIV|UNDELIV|❌No Entregado|❌No Entregado|
-|***OTROS***|--|❌No Entregado|❌No Entregado|
+| SUBMITD | DELIVRD | EXITOSO | EXITOSO |
+| SUBMITD | UNDELIV | EXITOSO | RECHAZADO |
+| UNDELIV | UNDELIV | RECHAZADO | RECHAZADO |
+| * | -- | RECHAZADO | RECHAZADO |
 
+## Estructura del proyecto
 
---- 
-Version Anterior
+- `src/efectividad/cli.py`: punto de entrada del CLI.
+- `src/efectividad/config.py`: carga de configuración y variables de entorno.
+- `src/efectividad/loader.py`: lectura y normalización de datos del gestor y vendor.
+- `src/efectividad/transformer.py`: generación del consolidado y reportes globales.
+- `src/efectividad/exporter.py`: exportación a reportes.
+- `src/efectividad/validator.py`: validación de resultados.
+- `cfg/dev.yml`: configuración del entorno actual.
+- `data/`: almacenamiento de datos procesados por fecha.
+- `vendor/`: archivos del proveedor descargados.
+- `transfers/`: transferencias AS400.
+- `exportaciones/`: reportes generados.
 
----
-| STATUS | DESCRIPTION | INTERPRETACION |
-|---|---|---|
-|REGISTD|Recibido, evento encolado en Sendo, es un estado temporal hasta que intenta el primer despacho|✅Entregado|
-|SUBMITD|Evento encolado en operadora móvil|✅Entregado|
-|DELIVRD|Entregado al destino|✅Entregado|
-|UNDELIV|Operadora indica que no fue posible entregar el SMS|🔺No Entregado|
-|EXPIRED|El mensaje superó el tiempo previsto para ser entregado debido a que el teléfono no se encontraba en estado de recepción|🔺No Entregado|
-|PORTED|El teléfono está en un estado transitorio de portabilidad|🔺No Entregado|
-|DELETED|El mensaje ha sido eliminado. El mensaje ha sido cancelado o eliminado del MC. No se realizarán más intentos de entrega.|✅Entregado|
+## Requisitos
+
+- Python >= 3.10
+- Dependencias definidas en `pyproject.toml`
+- Variables de entorno configuradas para acceso SFTP y AS400:
+  - `SFTP_HOST`
+  - `SFTP_PORT` (opcional, por defecto `22`)
+  - `SFTP_UID`
+  - `SFTP_PWD`
+  - `AS400_USER`
+  - `AS400_PASS`
+
+## Instalación
+
+```bash
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+
+pip install -e .
+```
+
+## Configuración
+
+El proyecto usa archivos YAML en la carpeta `cfg/`. El entorno por defecto es `dev`:
+
+```bash
+cfg/dev.yml
+```
+
+Los valores de conexión no se dejan en el archivo de configuración; el proyecto los toma desde variables de entorno o desde un archivo `.env` ubicado en la raíz del proyecto.
+
+## Uso del CLI
+
+El punto de entrada es:
+
+```bash
+efectividad
+```
+
+### 1) Procesar efectividad completa
+
+Ejecuta el flujo completo: descarga de transferencias, carga de gestor y vendor, generación de efectividad, validación y reporte global.
+
+```bash
+# efectividad de dia anterior (defecto)
+efectividad process
+# otras variaciones de acuerdo a la necesidad
+efectividad process --fecha 20260917
+efectividad process --desde 20260901 --hasta 20260915
+efectividad process --desde 20260901
+efectividad process --fecha 20260917 --skip-transfers
+efectividad process --fecha 20260917 --skip-vendor
+efectividad process --fecha 20260917 --skip-transfers --skip-vendor
+efectividad process --env dev
+```
+
+Variaciones reales del comando:
+
+- `--fecha` o `-f`: fecha exacta en formato `YYYYMMDD`.
+- `--desde` / `-d` y `--hasta` / `-h`: rango de fechas.
+- `--skip-transfers`: omite la descarga de transferencias AS400.
+- `--skip-vendor`: omite la descarga de archivos del proveedor desde SFTP.
+- `--env` / `-e`: entorno de configuración (`dev` por defecto).
+
+Si no se indica ninguna fecha, el sistema toma el día anterior por defecto.
+
+### 2) Generar reportes exportables
+
+Al igual que otras entregas los reportes se generan conforme a las definiciones de cada hoja dentro del archivo de configuracion `./cfg/EfectividadConfig.xlsx` y adicionalmente informacion de Pichincha y BGR descritos en la seccion `other_reports` dentro de `dev.yml`.
+
+```bash
+# efectividad de dia anterior (defecto)
+efectividad report
+# otras variaciones de acuerdo a la necesidad
+efectividad report --fecha 20260917
+efectividad report --desde 20260901 --hasta 20260915
+efectividad report --env dev
+```
+
+Este comando genera los reportes Excel asociados a la efectividad y, además, crea el reporte de longitudes.
+
+### 3) Limpiar datos procesados
+
+```bash
+efectividad clean --fecha 20260917
+efectividad clean --desde 20260901 --hasta 20260915
+efectividad clean --env dev
+```
+
+Elimina los datos de las tablas `gestor`, `vendor`, `consolidado` y `reporte` para la(s) fecha(s) indicadas.
+
+### 4) Consultar estado de datos disponibles
+
+```bash
+efectividad status --tabla reporte --env dev
+efectividad status --tabla gestor
+efectividad status -t consolidado
+```
+
+Muestra las fechas disponibles en la tabla indicada y una vista resumida del porcentaje de registros efectivos.
+
+## Flujo operativo recomendado
+
+1. Configurar variables de entorno (`.env` o entorno del sistema).
+2. Ejecutar el proceso completo (incluido descarga gestor y proveedor):
+
+   ```bash
+   efectividad process --fecha 20260917
+   ```
+
+3. Generar reportes con base en `EfectividadConfig.xlsx` y `other_reports`:
+
+   ```bash
+   efectividad report --fecha 20260917
+   ```
+
+### Otras opciones
+
+Revisar estado interno:
+
+```bash
+efectividad status --tabla reporte --env dev
+```
+
+Limpiar informacion historica:
+
+```bash
+efectividad clean --tabla reporte --env dev
+```
+
+## Notas de mantenimiento
+
+- La configuración del entorno se encuentra en `cfg/dev.yml` y puede ampliarse a otros archivos como `cfg/prod.yml` o similares.
+- Los datos procesados se guardan en `data/` en formato Parquet por tabla y fecha.
+- El proyecto no requiere subir archivos ZIP manualmente al directorio `vendor`; el CLI puede descargarlos y dejar la estructura lista para el proceso.
+- La información histórica o versiones anteriores del estado del proyecto fue removida porque no refleja el comportamiento actual del sistema.
