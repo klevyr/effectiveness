@@ -31,7 +31,7 @@ El sistema clasifica los resultados en dos niveles:
 La relación vigente del proyecto es la siguiente:
 
 | ApplicationStatus | PlatformStatus | Estado_Proveedor | Estado_Operadora |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | SUBMITD | DELIVRD | EXITOSO | EXITOSO |
 | SUBMITD | UNDELIV | EXITOSO | RECHAZADO |
 | UNDELIV | UNDELIV | RECHAZADO | RECHAZADO |
