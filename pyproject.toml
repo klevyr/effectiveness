@@ -19,6 +19,7 @@ dependencies = [
   "pyarrow",
   "pyyaml",
   "python-dotenv",
+  "python-calamine",
   "typer[all]",
   "xlsxwriter",
 ]

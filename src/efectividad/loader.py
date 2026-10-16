@@ -333,6 +333,7 @@ def load_efectividad_config(base_path: Path) -> dict[str, pl.LazyFrame]:
         sheets: dict[str, pl.DataFrame] = pl.read_excel(
             cfg_path,
             sheet_id=0,
+            engine="calamine",
         )
     else:
         log.warning("Archivo de configuración no encontrado: %s", cfg_path)

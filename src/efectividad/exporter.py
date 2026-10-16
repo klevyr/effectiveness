@@ -76,15 +76,20 @@ def generate_reports(
         informe_lf = _export_report_efectividad(
             efectividad_lf, cfg_data, file_path, output_cols
         )
-        exported.append(file_path)
 
-        if rpt_name == "General":
+        if not informe_lf.select(pl.len()).collect().is_empty():
+            exported.append(file_path)
+
+        if (rpt_name == "General") & (
+            not informe_lf.select(pl.len()).collect().is_empty()
+        ):
             rpt_filename = f"SMS-Rechazos_{date_str}.xlsx"
             file_path = report_dir / rpt_filename
             gestion_lf = load_rechazos_gestionados(base_path)
             rechazos = _export_report_rechazos(informe_lf, gestion_lf, file_path)
-            write_simple_parquet(lf=rechazos, base_path=base_path, table="rechazos")
-            exported.append(file_path)
+            if not rechazos.select(pl.len()).collect().is_empty():
+                write_simple_parquet(lf=rechazos, base_path=base_path, table="rechazos")
+                exported.append(file_path)
 
     # --- Reportes por entidad ---
     if other_reports:
@@ -168,26 +173,30 @@ def _export_report_efectividad(
         .unique(subset=["Fecha_Hora", "NumCelular", "TransactionId"], keep="any")
     )
 
-    resume = informe.group_by(
-        ["Fecha", "Desc_Area", "Estado_Proveedor", "Estado_Operadora"]
-    ).agg(pl.col("NumCelular").count().alias("Volumen"))
-    # Exportacion a Excel
-    with xlsxwriter.Workbook(output_filepath) as workbook:
-        # Resumen
-        worksheet = workbook.add_worksheet("Resume")
-        resume.collect().write_excel(
-            workbook=workbook, worksheet=worksheet, autofit=True
-        )
-        # Database
-        worksheet = workbook.add_worksheet("Database")
-        informe.collect().write_excel(
-            workbook=workbook,
-            worksheet=worksheet,
-            autofit=True,
-            table_style="Table Style Medium 2",
-        )
+    if not informe.collect().is_empty():
+        resume = informe.group_by(
+            ["Fecha", "Desc_Area", "Estado_Proveedor", "Estado_Operadora"]
+        ).agg(pl.col("NumCelular").count().alias("Volumen"))
+        # Exportacion a Excel
+        with xlsxwriter.Workbook(output_filepath) as workbook:
+            # Resumen
+            worksheet = workbook.add_worksheet("Resume")
+            resume.collect().write_excel(
+                workbook=workbook, worksheet=worksheet, autofit=True
+            )
+            # Database
+            worksheet = workbook.add_worksheet("Database")
+            informe.collect().write_excel(
+                workbook=workbook,
+                worksheet=worksheet,
+                autofit=True,
+                table_style="Table Style Medium 2",
+            )
 
-    return informe
+        return informe
+
+    log.warning("No hay datos de efectividad para %s", output_filepath.name)
+    return pl.LazyFrame()
 
 
 def _export_report_entidad(
@@ -266,14 +275,17 @@ def _export_report_rechazos(
     )
 
     # exportar archivos
-    filtered.collect().write_excel(
-        output_path,
-        worksheet="Database",
-        autofit=True,
-        table_style="Table Style Medium 2",
-    )
-
-    log.info(
-        "Rechazos filtrados: %d registros", filtered.select(pl.len()).collect().item()
-    )
+    if not filtered.collect().is_empty():
+        filtered.collect().write_excel(
+            output_path,
+            worksheet="Database",
+            autofit=True,
+            table_style="Table Style Medium 2",
+        )
+        log.info(
+            "Rechazos filtrados: %d registros",
+            filtered.select(pl.len()).collect().item(),
+        )
+    else:
+        log.warning("No hay rechazos filtrados para %s", output_path.name)
     return rechazos
